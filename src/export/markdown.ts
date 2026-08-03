@@ -5,6 +5,7 @@ import type {
   PlayerProfile,
   PlayerRating,
   ScoringStyle,
+  RequiredScaleKey,
   SelfAssessment,
   SessionStatistics,
   ThrowRecord,
@@ -184,6 +185,7 @@ export const ANALYSIS_INSTRUCTIONS = `以下の順序とルールで、統計の
 - 着弾データだけからグリップ、スタンス、肘、肩、手首、リリース等の真因を確定することはできません。フォーム情報も自己申告の背景です。身体・動作要因を原因仮説として挙げるのは、対応するデータ上の傾向(例: 3投目だけ右へ散る)と、本人が確認できる方法(例: 3投目のグリップ圧を意識して15投比較)をセットで示せる場合だけにしてください。その条件を満たす場合は萎縮せず、最有力の仮説として明確に挙げてください。フォーム情報が記録されていない場合は、身体・動作要因を断定的な最有力候補にせず、まず追加質問で確認してください。
 - same_set_as_previous=false の投擲はセットの1投目です。前投命中・ターゲット変更をN/Aとして、切替直後、命中後の再現性、ミス後の修正の集計から除外してください。previous_throw_was_hit_in_same_set と same_target_as_previous を優先してください。
 - クリケットのセット内切替サンプルが0投なら、切替能力を推測せず「未測定・分析不能」と明記してください。
+- 自己評価の数値に「(未回答)」が付いている項目は、ユーザーが操作しなかった既定値です。測定値として扱わず、その項目単独での傾向・原因の断定や、開始前と終了時の差分評価に使わないでください。必要なら追加質問で確認してください。
 - 矢速(speed_kmh)は任意入力のため一部の投擲にしか記録されていない場合があります。記録がある投擲だけで、矢速と精度・ミス方向・投順の関係を傾向として分析してください。
 
 ## 用語を混同しない
@@ -443,13 +445,25 @@ function assessmentSection(assessments: readonly SelfAssessment[]): string {
     "| タイミング | 疲労度 | 集中度 | 痛み | 自信度 | 投げる前の不安 | リリースの怖さ | ルーティン達成度 | 止まらず投げられた割合 | 止まる主なタイミング | 調子の変化 | メモ |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|",
   ];
+  let hasUnanswered = false;
   for (const a of assessments) {
+    // 既定値のまま送信された項目は「未回答」と明示する。値だけを出すと、
+    // ユーザーが実際にその値を選んだ自己申告値とAIが区別できない。
+    const untouched = new Set(a.untouchedScales ?? []);
+    if (untouched.size > 0) hasUnanswered = true;
+    const scale = (key: RequiredScaleKey, value: number) =>
+      untouched.has(key) ? `${value}(未回答)` : String(value);
     lines.push(
-      `| ${TIMING_LABELS[a.timing] ?? a.timing} | ${a.fatigue} | ${a.concentration} | ${a.pain} | ${a.confidence} | ${a.anxiety ?? NA} | ${a.releaseFear ?? NA} | ${a.routineAdherence ?? NA} | ${a.uninterruptedThrowRate != null ? `${a.uninterruptedThrowRate}%` : NA} | ${a.releaseStopTiming ? RELEASE_STOP_TIMING_LABELS[a.releaseStopTiming] ?? a.releaseStopTiming : NA} | ${a.conditionChange ? CHANGE_LABELS[a.conditionChange] : NA} | ${a.note ?? ""} |`
+      `| ${TIMING_LABELS[a.timing] ?? a.timing} | ${scale("fatigue", a.fatigue)} | ${scale("concentration", a.concentration)} | ${scale("pain", a.pain)} | ${scale("confidence", a.confidence)} | ${a.anxiety ?? NA} | ${a.releaseFear ?? NA} | ${a.routineAdherence ?? NA} | ${a.uninterruptedThrowRate != null ? `${a.uninterruptedThrowRate}%` : NA} | ${a.releaseStopTiming ? RELEASE_STOP_TIMING_LABELS[a.releaseStopTiming] ?? a.releaseStopTiming : NA} | ${a.conditionChange ? CHANGE_LABELS[a.conditionChange] : NA} | ${a.note ?? ""} |`
     );
   }
   lines.push("");
   lines.push("(各項目は0〜10の自己評価。0=まったくない/非常に低い、10=非常に強い/非常に高い。医学的評価ではない)");
+  if (hasUnanswered) {
+    lines.push(
+      "(「(未回答)」付きの数値はユーザーが操作しなかった既定値です。測定された自己申告値として扱わず、その項目に基づく傾向・原因の断定や、他タイミングとの差分評価を行わないでください)"
+    );
+  }
   lines.push("(止まらず投げられた割合は命中率ではなく、一連の動作を完了できたと本人が感じた主観割合。旧セッションの欠損値はN/Aとして扱う)");
   lines.push("(メンタル・投擲プロセス評価は主観記録であり、心理的・医学的診断ではない。分析時は投擲データとの関連を仮説として扱うこと)");
   return lines.join("\n") + "\n";

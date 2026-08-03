@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { TrainingSession } from "../types/models";
 import { normalizeScoringStyle } from "../types/models";
+import { csvWithBom } from "./csv";
 
 /** Builds a portable analysis bundle without mutating persisted data. */
 export async function buildAnalysisZip(
@@ -10,7 +11,9 @@ export async function buildAnalysisZip(
 ): Promise<Blob> {
   const zip = new JSZip();
   zip.file("analysis-request.md", markdown);
-  zip.file("throws.csv", csv);
+  // 単独ダウンロードのCSV(csvToBlob)と同一バイト列にするためBOMを前置する。
+  // BOMがないとZIPを展開したCSVだけが日本語版Excelで文字化けする。
+  zip.file("throws.csv", csvWithBom(csv));
   zip.file(
     "metadata.json",
     JSON.stringify(

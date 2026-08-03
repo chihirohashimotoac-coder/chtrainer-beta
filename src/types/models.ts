@@ -297,6 +297,13 @@ export interface SessionContextSnapshot {
   equipmentSnapshot?: EquipmentSnapshot;
 }
 
+/** 必須スケール(0-10)の項目名。未回答判定に使う。 */
+export type RequiredScaleKey =
+  | "fatigue"
+  | "concentration"
+  | "pain"
+  | "confidence";
+
 export interface SelfAssessment {
   timing: "before" | "middle" | "after";
   recordedAt: ISODateTime;
@@ -305,6 +312,14 @@ export interface SelfAssessment {
   concentration: number;
   pain: number;
   confidence: number;
+  /**
+   * ユーザーが一度も操作せず、既定値のまま記録された必須スケール項目。
+   * 値そのものは既定値(疲労度/集中度/自信度=5, 痛み=0)が入るため、
+   * 表示・出力層はこの一覧に含まれる項目を「未回答」として扱い、
+   * 測定済みの自己申告値と混同してはならない。
+   * 旧セッションでは未記録(undefined)＝判別不能。
+   */
+  untouchedScales?: RequiredScaleKey[];
   conditionChange?: "better" | "same" | "worse";
   /** メンタル評価(任意): 投げる前の不安 0-10 */
   anxiety?: number;

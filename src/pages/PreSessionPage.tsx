@@ -7,6 +7,7 @@ import {
 } from "../config/boardProfiles";
 import { DARTS_PER_SET } from "../config/constants";
 import { getSessions, saveSession } from "../db/db";
+import { purgeEmptyActiveSessions } from "../services/sessionService";
 import { generatePlannedTargets } from "../domain/planner";
 import { buildSkillCheckPlan, skillCheckUniqueTargets } from "../domain/skillCheck";
 import { useApp } from "../state/AppContext";
@@ -160,6 +161,9 @@ export default function PreSessionPage() {
       updatedAt: now,
     };
     try {
+      // 「開始」を押しただけで離脱した0投のセッションが履歴に溜まるため、
+      // 新しいセッションを保存する前に掃除する(投擲があるものは残す)。
+      await purgeEmptyActiveSessions(session.id);
       await saveSession(session);
       await refresh();
       reset();

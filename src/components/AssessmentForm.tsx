@@ -1,5 +1,9 @@
 import { useState } from "react";
-import type { ReleaseStopTiming, SelfAssessment } from "../types/models";
+import type {
+  ReleaseStopTiming,
+  RequiredScaleKey,
+  SelfAssessment,
+} from "../types/models";
 import { nowIso } from "../utils/id";
 import { Scale11 } from "./Scale11";
 import { t } from "../i18n/ja";
@@ -21,6 +25,16 @@ export function AssessmentForm({
   const [concentration, setConcentration] = useState(5);
   const [pain, setPain] = useState(0);
   const [confidence, setConfidence] = useState(5);
+  // 既定値のまま送信された項目を「未回答」として記録するため、操作された項目を追跡する。
+  // 既定値(5/5/0/5)と実際にその値を選んだ回答は区別できないため、操作の有無で判定する。
+  const [touchedScales, setTouchedScales] = useState<Set<RequiredScaleKey>>(
+    () => new Set()
+  );
+  const markTouched = (key: RequiredScaleKey) =>
+    setTouchedScales((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  const untouchedScales = (
+    ["fatigue", "concentration", "pain", "confidence"] as const
+  ).filter((key) => !touchedScales.has(key));
   const [conditionChange, setConditionChange] = useState<
     "better" | "same" | "worse"
   >("same");
@@ -40,6 +54,7 @@ export function AssessmentForm({
       concentration,
       pain,
       confidence,
+      ...(untouchedScales.length > 0 ? { untouchedScales } : {}),
       ...(timing !== "before" ? { conditionChange } : {}),
       // メンタル評価はセクションを開いて記録した場合のみ保存する
       ...(showMental
@@ -63,18 +78,39 @@ export function AssessmentForm({
         <br />
         {s.assessment.scaleHint10}
       </p>
-      <Scale11 label={s.assessment.fatigue} value={fatigue} onChange={setFatigue} />
+      <p className="muted small">{s.assessment.untouchedHint}</p>
+      <Scale11
+        label={s.assessment.fatigue}
+        value={fatigue}
+        onChange={(v) => {
+          markTouched("fatigue");
+          setFatigue(v);
+        }}
+      />
       <Scale11
         label={s.assessment.concentration}
         value={concentration}
-        onChange={setConcentration}
+        onChange={(v) => {
+          markTouched("concentration");
+          setConcentration(v);
+        }}
       />
-      <Scale11 label={s.assessment.pain} value={pain} onChange={setPain} />
+      <Scale11
+        label={s.assessment.pain}
+        value={pain}
+        onChange={(v) => {
+          markTouched("pain");
+          setPain(v);
+        }}
+      />
       <p className="muted small">{s.assessment.painDisclaimer}</p>
       <Scale11
         label={s.assessment.confidence}
         value={confidence}
-        onChange={setConfidence}
+        onChange={(v) => {
+          markTouched("confidence");
+          setConfidence(v);
+        }}
       />
 
       {timing !== "before" && (

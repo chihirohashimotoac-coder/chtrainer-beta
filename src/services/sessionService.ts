@@ -1,6 +1,8 @@
 import { DARTS_PER_SET } from "../config/constants";
 import {
+  deleteSessionCascade,
   getSession,
+  getSessions,
   getThrows,
   getThrowSets,
   saveCommittedSet,
@@ -187,6 +189,33 @@ export async function updateThrowLanding(
     }
   }
   await recalcAndSaveStatistics(record.sessionId);
+}
+
+/**
+ * 1投も記録されていない進行中セッションを削除する。
+ *
+ * セッションは「開始」を押した時点で作成されるため、モードや設定を選び直して
+ * 離脱するだけで0投のセッションが残り、履歴一覧を埋めてしまう。
+ * 0投のセッションは再開しても失われる進捗がないので、安全に削除できる。
+ * 1投でも記録があるセッションは中断として残すため、決して削除しない。
+ *
+ * @param exceptId 削除対象から除外するセッションID(これから使う新規セッション等)
+ * @returns 削除したセッション数
+ */
+export async function purgeEmptyActiveSessions(
+  exceptId?: UUID
+): Promise<number> {
+  const sessions = await getSessions();
+  let removed = 0;
+  for (const session of sessions) {
+    if (session.status !== "active") continue;
+    if (exceptId != null && session.id === exceptId) continue;
+    const throwCount = (await getThrows(session.id)).length;
+    if (throwCount > 0) continue;
+    await deleteSessionCascade(session.id);
+    removed += 1;
+  }
+  return removed;
 }
 
 /** セッションを終了(完了/中断)し統計を確定する */

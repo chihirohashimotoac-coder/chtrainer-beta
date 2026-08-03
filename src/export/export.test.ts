@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { buildSessionCsv, csvToBlob, escapeCsvField, CSV_COLUMNS } from "./csv";
+import {
+  buildSessionCsv,
+  csvToBlob,
+  csvWithBom,
+  escapeCsvField,
+  UTF8_BOM,
+  CSV_COLUMNS,
+} from "./csv";
 import { buildAnalysisMarkdown } from "./markdown";
 import { buildBackup, parseBackup, serializeBackup, validateBackup } from "./backup";
 import { calculateStatistics } from "../domain/stats";
@@ -195,6 +202,61 @@ describe("Markdown生成", () => {
     ]) {
       expect(markdown).toContain(heading);
     }
+  });
+
+  it("未回答の自己評価を既定値のまま測定値として出力しない", () => {
+    const md = buildAnalysisMarkdown({
+      session: fixtureSession({
+        assessments: [
+          {
+            timing: "before",
+            recordedAt: "2026-01-01T09:59:00.000Z",
+            // 既定値のまま送信された(ユーザーが一度も操作していない)ケース
+            fatigue: 5,
+            concentration: 5,
+            pain: 0,
+            confidence: 5,
+            untouchedScales: ["fatigue", "concentration", "pain", "confidence"],
+          },
+          {
+            timing: "after",
+            recordedAt: "2026-01-01T11:00:00.000Z",
+            // 疲労度だけ回答し、残りは既定値のまま
+            fatigue: 8,
+            concentration: 5,
+            pain: 0,
+            confidence: 5,
+            untouchedScales: ["concentration", "pain", "confidence"],
+          },
+        ],
+      }),
+      player: undefined,
+      equipment: undefined,
+      stats,
+      throws,
+      setNumberOf,
+      comparisons: [],
+      embedAllThrows: true,
+    });
+    // 未回答の項目は値の直後に(未回答)が付く
+    expect(md).toContain("| 開始前 | 5(未回答) | 5(未回答) | 0(未回答) | 5(未回答) |");
+    // 回答済みの項目には付かない
+    expect(md).toContain("| 終了後 | 8 | 5(未回答) | 0(未回答) | 5(未回答) |");
+    // AIへ測定値として扱わないよう明示する
+    expect(md).toContain("「(未回答)」付きの数値はユーザーが操作しなかった既定値です");
+    expect(md).toContain(
+      "自己評価の数値に「(未回答)」が付いている項目は、ユーザーが操作しなかった既定値です"
+    );
+  });
+
+  it("すべて回答済みの自己評価には未回答注記を付けない", () => {
+    // fixtureSession の既定 assessments は untouchedScales を持たない
+    expect(markdown).toContain("| 開始前 | 3 | 7 | 0 | 6 |");
+    // 値へのマーカーも、条件付きの注記行も出さない
+    expect(markdown).not.toContain("(未回答) |");
+    expect(markdown).not.toContain(
+      "「(未回答)」付きの数値はユーザーが操作しなかった既定値です"
+    );
   });
 
   it("分析指示のルールを含む", () => {
@@ -700,12 +762,52 @@ describe("ZIP出力", () => {
     expect(await zip.file("analysis-request.md")?.async("string")).toBe(
       "# analysis"
     );
-    expect(await zip.file("throws.csv")?.async("string")).toBe(csv);
+    // ZIP内CSVは単独ダウンロード(csvToBlob)と同一バイト列＝BOM付きであること。
+    // BOMがないとZIPを展開したCSVだけが日本語版Excelで文字化けする。
+    expect(await zip.file("throws.csv")?.async("string")).toBe(csvWithBom(csv));
     const metadata = JSON.parse(
       (await zip.file("metadata.json")?.async("string")) ?? "{}"
     ) as Record<string, unknown>;
     expect(metadata["sessionId"]).toBe(session.id);
     expect(metadata["assessments"]).toEqual(session.assessments);
+  });
+
+  it("ZIP内CSVと単独ダウンロードCSVがバイト単位で一致する(BOM込み)", async () => {
+    const csv = buildSessionCsv(session, throws, setNumberOf);
+    const blob = await buildAnalysisZip("# analysis", csv, session);
+    const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(blob);
+    });
+    const zip = await JSZip.loadAsync(bytes);
+    // 実バイト列で比較する(readAsTextはBOMをデコード時に食べてしまうため使わない)
+    const inZipBytes = (await zip.file("throws.csv")?.async("uint8array")) ??
+      new Uint8Array();
+    const standaloneBuffer = await new Promise<ArrayBuffer>(
+      (resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(csvToBlob(csv));
+      }
+    );
+    const standaloneBytes = new Uint8Array(standaloneBuffer);
+    expect([...inZipBytes]).toEqual([...standaloneBytes]);
+    // 先頭3バイトがUTF-8 BOM (EF BB BF) であること
+    expect([...inZipBytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+
+    const inZipText = (await zip.file("throws.csv")?.async("string")) ?? "";
+    expect(inZipText.startsWith(UTF8_BOM)).toBe(true);
+    // 本文(BOMを除いた部分)も当然一致する
+    expect(inZipText.slice(UTF8_BOM.length)).toBe(csv);
+  });
+
+  it("csvWithBomはBOMを二重に付けない", () => {
+    const once = csvWithBom("a,b\r\n");
+    expect(csvWithBom(once)).toBe(once);
+    expect(once.startsWith(UTF8_BOM)).toBe(true);
   });
 
   it("Markdown・CSVのセッションIDが一致し、CSVにspeed_kmhが含まれる", async () => {

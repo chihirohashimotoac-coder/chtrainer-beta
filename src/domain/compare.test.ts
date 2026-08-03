@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { fixtureSession, handComputedThrows } from "../test/fixtures";
+import {
+  fixtureSession,
+  handComputedThrows,
+  mixedPrecisionThrows,
+} from "../test/fixtures";
 import { calculateStatistics } from "./stats";
 import {
   compareStatistics,
@@ -193,5 +197,59 @@ describe("N/A統計の比較", () => {
     const normal = calculateStatistics("normal", 6, handComputedThrows());
     const c = compareStatistics(normal, normal);
     expect(c.hitRate.diff).toBeCloseTo(0);
+  });
+});
+
+describe("比較の分母・サンプル数・入力精度", () => {
+  const coordinateStats = calculateStatistics("coord", 6, handComputedThrows());
+  const approximateStats = calculateStatistics(
+    "approx",
+    6,
+    mixedPrecisionThrows()
+  );
+
+  it("率には命中判定対象数、平均誤差にはサンプル数を分母として添える", () => {
+    const c = compareStatistics(coordinateStats, coordinateStats);
+    // 命中率の分母 = 命中判定対象数(総投擲数ではない)
+    expect(c.hitRate.baseSample).toBe(
+      coordinateStats.scorableThrows ?? coordinateStats.completedThrows
+    );
+    expect(c.hitRate.otherSample).toBe(c.hitRate.baseSample);
+    // 平均誤差距離の分母 = 誤差サンプル数(命中判定対象数とは別)
+    expect(c.averageErrorDistance.baseSample).toBe(
+      coordinateStats.combinedError.sampleCount
+    );
+    // 投順別・前後半・ターゲット別にもそれぞれの分母が付く
+    expect(c.byDartInSet["1"].hitRate.baseSample).toBe(
+      coordinateStats.byDartInSet["1"].scorableThrows ??
+        coordinateStats.byDartInSet["1"].throwCount
+    );
+    expect(c.firstHalfHitRate.baseSample).toBe(
+      coordinateStats.firstHalf.scorableThrows ??
+        coordinateStats.firstHalf.throwCount
+    );
+    expect(c.secondHalfHitRate.baseSample).toBe(
+      coordinateStats.secondHalf.scorableThrows ??
+        coordinateStats.secondHalf.throwCount
+    );
+    const label = Object.keys(c.byTarget)[0];
+    expect(label).toBeDefined();
+    expect(c.byTarget[label!]!.hitRate.baseSample).toBeGreaterThan(0);
+  });
+
+  it("命中率の分母が総投擲数と異なる場合でも分母を正しく示す", () => {
+    // グルーピング専用(命中判定対象0)を含めると分母 < 完了投擲数 になる
+    const na = calculateStatistics("na", 60, []);
+    const c = compareStatistics(na, coordinateStats);
+    expect(c.hitRate.base).toBeUndefined();
+    expect(c.hitRate.baseSample).toBe(0);
+  });
+
+  it("入力精度の内訳を比較結果に含め、混在を判別できる", () => {
+    const c = compareStatistics(coordinateStats, approximateStats);
+    expect(c.precision.base.coordinateInputCount).toBeGreaterThan(0);
+    expect(c.precision.base.includesApproximation).toBe(false);
+    expect(c.precision.other.approximateInputCount).toBeGreaterThan(0);
+    expect(c.precision.other.includesApproximation).toBe(true);
   });
 });

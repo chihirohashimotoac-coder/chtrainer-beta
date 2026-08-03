@@ -7,6 +7,8 @@ import {
   comparisonMismatches,
   rankComparisonCandidates,
   rankDissimilarCandidates,
+  type PrecisionSummary,
+  type StatDiff,
 } from "../domain/compare";
 import { modeLabel } from "../export/markdown";
 import type { SessionStatistics, TrainingSession } from "../types/models";
@@ -158,6 +160,7 @@ export default function ComparePage() {
               {s.compare.pastSession}: {fmtDateTime(other.startedAt)} (
               {modeLabel(other.trainingMode)})
             </h2>
+            <PrecisionNote precision={c.precision} />
             <div className="table-wrap">
               <table className="stats">
                 <thead>
@@ -171,45 +174,36 @@ export default function ComparePage() {
                 <tbody>
                   <tr>
                     <td>{s.result.exactHitRate}</td>
-                    <td>{fmtRate(c.hitRate.base)}</td>
-                    <td>{fmtRate(c.hitRate.other)}</td>
-                    <td>{fmtRateDiff(c.hitRate.diff)}</td>
+                    <DiffCells d={c.hitRate} format="rate" />
                   </tr>
                   <tr>
                     <td>{s.result.averageErrorDistance}</td>
-                    <td>{fmtNum(c.averageErrorDistance.base)}</td>
-                    <td>{fmtNum(c.averageErrorDistance.other)}</td>
-                    <td>{fmtNumDiff(c.averageErrorDistance.diff)}</td>
+                    <DiffCells d={c.averageErrorDistance} format="num" />
                   </tr>
                   {(["1", "2", "3"] as const).map((order) => (
                     <tr key={order}>
                       <td>
                         {order}投目 {s.result.hitRate}
                       </td>
-                      <td>{fmtRate(c.byDartInSet[order].hitRate.base)}</td>
-                      <td>{fmtRate(c.byDartInSet[order].hitRate.other)}</td>
-                      <td>{fmtRateDiff(c.byDartInSet[order].hitRate.diff)}</td>
+                      <DiffCells d={c.byDartInSet[order].hitRate} format="rate" />
                     </tr>
                   ))}
                   <tr>
                     <td>
                       {s.result.firstHalf} {s.result.hitRate}
                     </td>
-                    <td>{fmtRate(c.firstHalfHitRate.base)}</td>
-                    <td>{fmtRate(c.firstHalfHitRate.other)}</td>
-                    <td>{fmtRateDiff(c.firstHalfHitRate.diff)}</td>
+                    <DiffCells d={c.firstHalfHitRate} format="rate" />
                   </tr>
                   <tr>
                     <td>
                       {s.result.secondHalf} {s.result.hitRate}
                     </td>
-                    <td>{fmtRate(c.secondHalfHitRate.base)}</td>
-                    <td>{fmtRate(c.secondHalfHitRate.other)}</td>
-                    <td>{fmtRateDiff(c.secondHalfHitRate.diff)}</td>
+                    <DiffCells d={c.secondHalfHitRate} format="rate" />
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p className="muted small">{s.compare.sampleNote}</p>
             <h3>{s.compare.byTargetDiff}</h3>
             <div className="table-wrap">
               <table className="stats">
@@ -230,9 +224,7 @@ export default function ComparePage() {
                       return (
                         <tr key={label}>
                           <td>{label}</td>
-                          <td>{fmtRate(d.hitRate.base)}</td>
-                          <td>{fmtRate(d.hitRate.other)}</td>
-                          <td>{fmtRateDiff(d.hitRate.diff)}</td>
+                          <DiffCells d={d.hitRate} format="rate" />
                         </tr>
                       );
                     })}
@@ -244,6 +236,65 @@ export default function ComparePage() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * 値と一緒に必ず分母(サンプル数)を表示する。
+ * 「3投目 命中率 50.0% → 100.0%」のような差は、分母が20投なのか2投なのかで
+ * 意味がまったく変わるため、値だけを見て改善・悪化と判断できないようにする。
+ */
+function DiffCells({ d, format }: { d: StatDiff; format: "rate" | "num" }) {
+  const s = t();
+  const value = (v: number | undefined) =>
+    format === "rate" ? fmtRate(v) : fmtNum(v);
+  const diff = format === "rate" ? fmtRateDiff(d.diff) : fmtNumDiff(d.diff);
+  const sample = (n: number | undefined) =>
+    n == null ? null : (
+      <div className="muted small">
+        {s.compare.sampleUnit}
+        {n}
+      </div>
+    );
+  return (
+    <>
+      <td>
+        {value(d.base)}
+        {sample(d.baseSample)}
+      </td>
+      <td>
+        {value(d.other)}
+        {sample(d.otherSample)}
+      </td>
+      <td>{diff}</td>
+    </>
+  );
+}
+
+/**
+ * 入力精度の内訳。詳細座標と簡易入力(エリア代表点による概算)では
+ * 平均誤差距離の意味が違うため、差分だけで精度を判断させない。
+ */
+function PrecisionNote({
+  precision,
+}: {
+  precision: { base: PrecisionSummary; other: PrecisionSummary };
+}) {
+  const s = t();
+  const describe = (p: PrecisionSummary) =>
+    `${s.compare.precisionCoordinate}${p.coordinateInputCount} / ${s.compare.precisionApproximate}${p.approximateInputCount}`;
+  const mixed =
+    precision.base.includesApproximation !==
+    precision.other.includesApproximation;
+  return (
+    <div className="info-box small">
+      <div>
+        <strong>{s.compare.precisionLabel}</strong> {s.compare.thisSession}:{" "}
+        {describe(precision.base)} / {s.compare.pastSession}:{" "}
+        {describe(precision.other)}
+      </div>
+      {mixed && <div>{s.compare.precisionMixedWarning}</div>}
     </div>
   );
 }

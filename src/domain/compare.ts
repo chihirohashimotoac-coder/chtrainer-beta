@@ -166,16 +166,48 @@ export interface StatDiff {
   base: number | undefined;
   other: number | undefined;
   diff: number | undefined;
+  /**
+   * その値の分母(率なら命中判定対象数、平均なら誤差サンプル数)。
+   * 少数サンプル同士の差を大きな改善・悪化と読み違えないよう、
+   * 表示層は必ず値と一緒にこの分母を出すこと。undefined = 分母不明(旧データ)。
+   */
+  baseSample?: number;
+  otherSample?: number;
 }
 
 function diffOf(
   base: number | undefined,
-  other: number | undefined
+  other: number | undefined,
+  baseSample?: number,
+  otherSample?: number
 ): StatDiff {
   return {
     base,
     other,
     diff: base != null && other != null ? base - other : undefined,
+    ...(baseSample != null ? { baseSample } : {}),
+    ...(otherSample != null ? { otherSample } : {}),
+  };
+}
+
+/**
+ * 比較する2セッションの入力精度の内訳。
+ * 詳細座標と簡易入力(エリア代表点による概算)では平均誤差距離の意味が違うため、
+ * 差分値だけを見て精度が改善・悪化したと判断してはならない。
+ */
+export interface PrecisionSummary {
+  coordinateInputCount: number;
+  approximateInputCount: number;
+  /** 概算(簡易入力)を1投でも含むか */
+  includesApproximation: boolean;
+}
+
+export function precisionSummaryOf(stats: SessionStatistics): PrecisionSummary {
+  const approximateInputCount = stats.approximateInputCount ?? 0;
+  return {
+    coordinateInputCount: stats.coordinateInputCount ?? 0,
+    approximateInputCount,
+    includesApproximation: approximateInputCount > 0,
   };
 }
 
@@ -186,6 +218,16 @@ export interface SessionComparison {
   byTarget: Record<string, { hitRate: StatDiff; averageErrorDistance: StatDiff }>;
   firstHalfHitRate: StatDiff;
   secondHalfHitRate: StatDiff;
+  /** 平均誤差距離の解釈に必要な入力精度の内訳 */
+  precision: { base: PrecisionSummary; other: PrecisionSummary };
+}
+
+/** 命中率の分母(命中判定対象数)。未記録の旧データは総投擲数で代替する。 */
+function scorableOf(
+  group: { scorableThrows?: number; throwCount: number } | undefined
+): number | undefined {
+  if (!group) return undefined;
+  return group.scorableThrows ?? group.throwCount;
 }
 
 /** 2セッションの統計を比較する(diff = 基準 - 過去) */
@@ -197,7 +239,12 @@ export function compareStatistics(
   const byDartInSet = {} as SessionComparison["byDartInSet"];
   for (const o of orders) {
     byDartInSet[o] = {
-      hitRate: diffOf(base.byDartInSet[o].hitRate, other.byDartInSet[o].hitRate),
+      hitRate: diffOf(
+        base.byDartInSet[o].hitRate,
+        other.byDartInSet[o].hitRate,
+        scorableOf(base.byDartInSet[o]),
+        scorableOf(other.byDartInSet[o])
+      ),
       averageErrorDistance: diffOf(
         base.byDartInSet[o].averageErrorDistance,
         other.byDartInSet[o].averageErrorDistance
@@ -213,7 +260,9 @@ export function compareStatistics(
     byTarget[label] = {
       hitRate: diffOf(
         base.byTarget[label]?.hitRate,
-        other.byTarget[label]?.hitRate
+        other.byTarget[label]?.hitRate,
+        scorableOf(base.byTarget[label]),
+        scorableOf(other.byTarget[label])
       ),
       averageErrorDistance: diffOf(
         base.byTarget[label]?.averageErrorDistance,
@@ -222,17 +271,35 @@ export function compareStatistics(
     };
   }
   return {
-    hitRate: diffOf(base.exactHitRate, other.exactHitRate),
+    hitRate: diffOf(
+      base.exactHitRate,
+      other.exactHitRate,
+      base.scorableThrows ?? base.completedThrows,
+      other.scorableThrows ?? other.completedThrows
+    ),
     averageErrorDistance: diffOf(
       base.combinedError.averageErrorDistance,
-      other.combinedError.averageErrorDistance
+      other.combinedError.averageErrorDistance,
+      base.combinedError.sampleCount,
+      other.combinedError.sampleCount
     ),
     byDartInSet,
     byTarget,
-    firstHalfHitRate: diffOf(base.firstHalf.hitRate, other.firstHalf.hitRate),
+    firstHalfHitRate: diffOf(
+      base.firstHalf.hitRate,
+      other.firstHalf.hitRate,
+      scorableOf(base.firstHalf),
+      scorableOf(other.firstHalf)
+    ),
     secondHalfHitRate: diffOf(
       base.secondHalf.hitRate,
-      other.secondHalf.hitRate
+      other.secondHalf.hitRate,
+      scorableOf(base.secondHalf),
+      scorableOf(other.secondHalf)
     ),
+    precision: {
+      base: precisionSummaryOf(base),
+      other: precisionSummaryOf(other),
+    },
   };
 }

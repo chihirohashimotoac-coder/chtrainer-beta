@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SOFT_BOARD, STEEL_BOARD } from "../config/boardProfiles";
-import { getThrows, getThrowSets, saveSession } from "../db/db";
+import { getSessions, getThrows, getThrowSets, saveSession } from "../db/db";
 import { landingFromCoordinate } from "../domain/landing";
 import { buildSessionCsv } from "../export/csv";
 import { buildAnalysisMarkdown } from "../export/markdown";
@@ -8,6 +8,7 @@ import { fixtureSession, T20 } from "../test/fixtures";
 import { buildSkillCheckPlan } from "../domain/skillCheck";
 import {
   commitSet,
+  purgeEmptyActiveSessions,
   recalcAndSaveStatistics,
   updateThrowLanding,
 } from "./sessionService";
@@ -250,5 +251,80 @@ describe("session commit/export flow", () => {
         (record) => record.derived.targetChangedFromPrevious
       )
     ).toEqual([false, false, false]);
+  });
+});
+
+describe("空の進行中セッションの掃除", () => {
+  it("0投の進行中セッションだけを削除し、投擲のあるものは残す", async () => {
+    const empty1 = fixtureSession({
+      id: "purge-empty-1",
+      status: "active",
+      startedAt: "2026-02-01T10:00:00.000Z",
+    });
+    const empty2 = fixtureSession({
+      id: "purge-empty-2",
+      status: "active",
+      startedAt: "2026-02-01T11:00:00.000Z",
+    });
+    const withThrows = fixtureSession({
+      id: "purge-has-throws",
+      status: "active",
+      startedAt: "2026-02-01T12:00:00.000Z",
+    });
+    const completedEmpty = fixtureSession({
+      id: "purge-completed-empty",
+      status: "completed",
+      startedAt: "2026-02-01T09:00:00.000Z",
+    });
+    const brandNew = fixtureSession({
+      id: "purge-brand-new",
+      status: "active",
+      startedAt: "2026-02-01T13:00:00.000Z",
+    });
+    for (const s of [empty1, empty2, withThrows, completedEmpty, brandNew]) {
+      await saveSession(s);
+    }
+    // 1投でも記録があるセッションは中断として残す必要がある
+    await commitSet(
+      withThrows,
+      1,
+      [1, 2, 3].map((dartInSet) => ({
+        dartInSet: dartInSet as 1 | 2 | 3,
+        target: T20,
+        landing: landingFromCoordinate(
+          T20.representativePoint.x,
+          T20.representativePoint.y,
+          STEEL_BOARD
+        ),
+      })),
+      undefined,
+      withThrows.startedAt
+    );
+
+    const removed = await purgeEmptyActiveSessions(brandNew.id);
+    expect(removed).toBe(2);
+
+    const ids = (await getSessions()).map((s) => s.id);
+    expect(ids).not.toContain("purge-empty-1");
+    expect(ids).not.toContain("purge-empty-2");
+    // 投擲があるもの・完了済み・除外指定したものは残る
+    expect(ids).toContain("purge-has-throws");
+    expect(ids).toContain("purge-completed-empty");
+    expect(ids).toContain("purge-brand-new");
+    expect((await getThrows("purge-has-throws")).length).toBe(3);
+  });
+
+  it("除外指定を外せば次回に掃除され、その後は0件で安定する", async () => {
+    // 前テストで除外した purge-brand-new は0投のままなので、次の掃除で消える
+    expect(await purgeEmptyActiveSessions()).toBe(1);
+    expect((await getSessions()).map((s) => s.id)).not.toContain(
+      "purge-brand-new"
+    );
+
+    // 対象が尽きたら何も変更しない(繰り返し呼んでも安全)
+    const before = (await getSessions()).map((s) => s.id).sort();
+    expect(await purgeEmptyActiveSessions()).toBe(0);
+    expect((await getSessions()).map((s) => s.id).sort()).toEqual(before);
+    expect((await getThrows("purge-has-throws")).length).toBe(3);
   });
 });

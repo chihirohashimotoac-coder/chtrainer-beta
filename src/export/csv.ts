@@ -151,9 +151,21 @@ export function buildSessionCsv(
 }
 
 /**
+ * UTF-8 BOM。日本語版Excelがエンコーディングを誤判定しないために付ける。
+ * CSVを外部へ出す経路(単独ダウンロード・ZIP同梱)では必ずこれを前置し、
+ * 経路によってBOMの有無が食い違わないようにする。
+ */
+export const UTF8_BOM = "﻿";
+
+/** BOMを前置したCSV文字列を返す(ファイルとして書き出す直前に使う)。 */
+export function csvWithBom(csv: string): string {
+  return csv.startsWith(UTF8_BOM) ? csv : UTF8_BOM + csv;
+}
+
+/**
  * UTF-8 BOM付きのCSV Blobを作る。
  * 日本語版Excelで文字化けしないようBOMを付ける。
  */
 export function csvToBlob(csv: string): Blob {
-  return new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
+  return new Blob([csvWithBom(csv)], { type: "text/csv;charset=utf-8" });
 }

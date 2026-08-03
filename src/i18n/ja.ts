@@ -311,6 +311,8 @@ export const ja = {
     confidence: "自信度",
     scaleHint0: "0:まったくない、または非常に低い",
     scaleHint10: "10:非常に強い、または非常に高い",
+    untouchedHint:
+      "操作しなかった項目は「未回答」として記録され、AI分析でも測定値として扱われません。",
     painDisclaimer: "痛みの記録は医学的評価ではありません。強い痛みがある場合は練習を中止し、医療機関にご相談ください。",
     conditionChange: "現在の調子",
     changeBetter: "開始時より良くなった",
@@ -551,6 +553,14 @@ export const ja = {
     showDissimilar: "条件の異なるセッションを表示",
     hideDissimilar: "条件の異なるセッションを隠す",
     dissimilarHint: "モードが異なるため統計の意味が違います。参考程度にしてください。",
+    sampleUnit: "n=",
+    sampleNote:
+      "n は各値の分母です(命中率=命中判定対象数、平均誤差距離=誤差サンプル数)。分母が小さい項目の差は、実力差ではなく偶然の可能性があります。",
+    precisionLabel: "入力精度:",
+    precisionCoordinate: "詳細座標 ",
+    precisionApproximate: "簡易入力(概算) ",
+    precisionMixedWarning:
+      "一方が簡易入力(エリア代表点による概算)のため、平均誤差距離は同じ精度で比較できません。差分は精度の違いを含みます。",
   },
   export: {
     title: "AI分析データ出力",
