@@ -8,16 +8,27 @@ import {
   UTF8_BOM,
   CSV_COLUMNS,
 } from "./csv";
-import { buildAnalysisMarkdown } from "./markdown";
+import {
+  ANALYSIS_PERSONA,
+  OUTPUT_FORMAT_INSTRUCTIONS,
+  buildAnalysisMarkdown,
+  inputPrecisionModeOf,
+} from "./markdown";
 import { buildBackup, parseBackup, serializeBackup, validateBackup } from "./backup";
 import { calculateStatistics } from "../domain/stats";
 import {
   buildThrows,
   fixtureSession,
   handComputedThrows,
+  mixedPrecisionThrows,
   T20,
 } from "../test/fixtures";
-import { landingFromCoordinate, landingBounceOut } from "../domain/landing";
+import type { ThrowRecord, TrainingSession } from "../types/models";
+import {
+  landingFromCoordinate,
+  landingBounceOut,
+  landingFromSegment,
+} from "../domain/landing";
 import { fmtNum } from "../utils/format";
 import { SOFT_BOARD, STEEL_BOARD } from "../config/boardProfiles";
 import { BACKUP_VERSION } from "../config/constants";
@@ -262,7 +273,7 @@ describe("Markdown生成", () => {
   it("分析指示のルールを含む", () => {
     expect(markdown).toContain("医学的診断、心理的診断、性格診断は禁止");
     expect(markdown).toContain("【事実】");
-    expect(markdown).toContain("### 2. ユーザーの問題点");
+    expect(markdown).toContain("#### 1-2. ユーザーの問題点");
     expect(markdown).toContain("優先して改善すべき項目");
     expect(markdown).toContain("原因候補・仮説");
     expect(markdown).toContain("仮説と矛盾する点");
@@ -280,6 +291,80 @@ describe("Markdown生成", () => {
     expect(markdown).toContain("2つ以上の指標・条件を掛け合わせて");
     // ハイライト章でも単一指標の表面的傾向を禁止していること
     expect(markdown).toContain("単一指標で分かる表面的傾向");
+  });
+
+  it("役割定義(ペルソナ)を分析指示の冒頭へ置く", () => {
+    expect(markdown).toContain(ANALYSIS_PERSONA);
+    expect(markdown).toContain("スポーツバイオメカニクス");
+    // ペルソナは「## AIへの分析指示」直後、詳細ルールより前に出す
+    const heading = markdown.indexOf("## AIへの分析指示");
+    const persona = markdown.indexOf(ANALYSIS_PERSONA);
+    const rules = markdown.indexOf("## リスクヘッジの置き方");
+    expect(heading).toBeGreaterThan(-1);
+    expect(persona).toBeGreaterThan(heading);
+    expect(persona).toBeLessThan(rules);
+  });
+
+  it("思考プロセス(事実抽出→仮説→アクション)の3ステップを含む", () => {
+    expect(markdown).toContain("## 思考プロセス(回答を書く前にこの手順で考える)");
+    expect(markdown).toContain("**客観的事実の抽出**");
+    expect(markdown).toContain("**要因の仮説提示**");
+    expect(markdown).toContain("**改善アクション案**");
+    // 各ステップが回答構成の章に対応することを明示している
+    expect(markdown).toContain("第1章・第2章・第3章にそれぞれ対応");
+  });
+
+  it("回答構成を3章立てにし、既存の詳細項目を小見出しとして保持する", () => {
+    for (const chapter of [
+      "### 1. データの特徴(思考ステップ1: 客観的事実の抽出)",
+      "### 2. 考えられる要因（仮説）(思考ステップ2: 要因の仮説提示)",
+      "### 3. 次回へのアクション(思考ステップ3: 改善アクション案)",
+    ]) {
+      expect(markdown).toContain(chapter);
+    }
+    for (const sub of [
+      "#### 1-1. 最重要結論",
+      "#### 1-2. ユーザーの問題点",
+      "#### 2-1. 原因候補・仮説",
+      "#### 2-2. ユーザーが気付いていない可能性がある傾向",
+      "#### 3-1. 優先して改善すべき項目",
+      "#### 3-2. 改善方法（原因仮説を確認するための実験）",
+      "#### 3-3. 原因を絞り込む追加質問",
+      "#### 3-4. ユーザー回答後の再診断",
+    ]) {
+      expect(markdown).toContain(sub);
+    }
+    // 章の順序が指定どおりであること
+    const order = [
+      "### 1. データの特徴",
+      "### 2. 考えられる要因（仮説）",
+      "### 3. 次回へのアクション",
+    ].map((h) => markdown.indexOf(h));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("出力フォーマット・トーン指定を依頼文の末尾へ置く", () => {
+    expect(markdown).toContain("## 回答のフォーマットとトーン");
+    expect(markdown).toContain(
+      "「1. データの特徴」「2. 考えられる要因（仮説）」「3. 次回へのアクション」の3章構成"
+    );
+    expect(markdown).toContain("文字数制限は設けず");
+    expect(markdown).toContain("前向きで実践的なトーン");
+    // 末尾に置く(以降にセクション見出しがない)
+    const index = markdown.indexOf("## 回答のフォーマットとトーン");
+    expect(index).toBeGreaterThan(markdown.indexOf("## データ利用上の注意"));
+    expect(markdown.slice(index + 1).includes("\n## ")).toBe(false);
+  });
+
+  it("フォーマット指定でも医学的診断の禁止と分析不能の明示を維持する", () => {
+    expect(OUTPUT_FORMAT_INSTRUCTIONS).toContain(
+      "医学的診断・心理的診断・性格診断は行わないこと"
+    );
+    expect(OUTPUT_FORMAT_INSTRUCTIONS).toContain("「分析不能」と明記");
+    // 前向きなトーン指定が、課題の曖昧化や確からしさの水増しへ繋がらないこと
+    expect(OUTPUT_FORMAT_INSTRUCTIONS).toContain(
+      "確からしさを実際より高く述べたり"
+    );
   });
 
   it("全投擲データの表を含む", () => {
@@ -1472,5 +1557,125 @@ describe("JSONバックアップ検証", () => {
     };
     broken.data.sessions = [{ notId: true }];
     expect(validateBackup(broken).ok).toBe(false);
+  });
+});
+
+describe("入力精度に応じた分析指示の切替", () => {
+  const build = (
+    records: readonly ThrowRecord[],
+    overrides?: Partial<TrainingSession>
+  ) => {
+    const s = fixtureSession(overrides);
+    return buildAnalysisMarkdown({
+      session: s,
+      player: undefined,
+      equipment: undefined,
+      stats: calculateStatistics(s.id, records.length, records),
+      throws: records,
+      setNumberOf,
+      comparisons: [],
+      embedAllThrows: true,
+    });
+  };
+  const segmentThrows = buildThrows(
+    [
+      { target: T20, landing: landingFromSegment("triple", STEEL_BOARD, 20) },
+      { target: T20, landing: landingFromSegment("outer_single", STEEL_BOARD, 5) },
+      { target: T20, landing: landingFromSegment("outer_single", STEEL_BOARD, 1) },
+    ],
+    3
+  );
+
+  it("記録済み着弾の精度から区分を判定する", () => {
+    const coordinateSession = fixtureSession();
+    expect(
+      inputPrecisionModeOf(
+        calculateStatistics("s", 6, throws),
+        coordinateSession
+      )
+    ).toBe("coordinate");
+    expect(
+      inputPrecisionModeOf(
+        calculateStatistics("s", 3, segmentThrows),
+        fixtureSession({ inputMethod: "simple" })
+      )
+    ).toBe("simple");
+    expect(
+      inputPrecisionModeOf(
+        calculateStatistics("s", 3, mixedPrecisionThrows()),
+        coordinateSession
+      )
+    ).toBe("mixed");
+  });
+
+  it("精度付きの着弾が1件もなければセッション設定へフォールバックする", () => {
+    const bounceOnly = buildThrows(
+      [{ target: T20, landing: landingBounceOut() }],
+      1
+    );
+    const stats1 = calculateStatistics("s", 1, bounceOnly);
+    expect(stats1.coordinateInputCount).toBe(0);
+    expect(stats1.approximateInputCount).toBe(0);
+    expect(inputPrecisionModeOf(stats1, fixtureSession())).toBe("coordinate");
+    expect(
+      inputPrecisionModeOf(stats1, fixtureSession({ inputMethod: "simple" }))
+    ).toBe("simple");
+    // スナップショットの入力方式を優先する
+    expect(
+      inputPrecisionModeOf(
+        stats1,
+        fixtureSession({
+          inputMethod: "coordinate",
+          contextSnapshot: {
+            capturedAt: "2026-01-01T10:00:00.000Z",
+            displayName: "P",
+            dominantHand: "right",
+            dartColors: ["#000", "#111", "#222"],
+            boardType: "steel",
+            inputMethod: "simple",
+          },
+        })
+      )
+    ).toBe("simple");
+  });
+
+  it("詳細座標入力では左右・上下の偏差を個別に分析させる", () => {
+    const md = build(throws);
+    expect(md).toContain("### 入力精度に応じた分析指示");
+    expect(md).toContain("本データは詳細なX/Y座標");
+    expect(md).toContain("左右の偏差(テイクバック・リリースラインに関わる軸)");
+    expect(md).toContain("上下の偏差(リリースポイント・高低差に関わる軸)");
+    expect(md).toContain("分けて集計・評価");
+    // 簡易入力向けの指示は出さない
+    expect(md).not.toContain("本データはセグメント単位の簡易入力です");
+  });
+
+  it("簡易入力では命中率と確率推移を中心に分析させる", () => {
+    const md = build(segmentThrows, { inputMethod: "simple" });
+    expect(md).toContain("本データはセグメント単位の簡易入力です");
+    expect(md).toContain("ミリ単位の誤差ではなく");
+    expect(md).toContain("投順・セット間での確率推移");
+    expect(md).toContain("グルーピング径の絶対値");
+    expect(md).not.toContain("本データは詳細なX/Y座標");
+  });
+
+  it("混在セッションでは精度ごとに扱いを分けさせる", () => {
+    const md = build(mixedPrecisionThrows());
+    expect(md).toContain("詳細座標入力と簡易入力が混在しています");
+    expect(md).toContain("同じ測定値として合算した結論を出さないでください");
+    expect(md).toContain("- 着弾記録の内訳: 詳細座標入力 1投 / 簡易入力(セグメント単位) 2投");
+  });
+
+  it("正規化座標のmm換算係数をボード種別に応じて示す", () => {
+    expect(build(throws)).toContain(
+      "ボード半径 170mm を掛けてください(誤差距離0.10 ≒ 17mm)"
+    );
+    const soft = build(throws, {
+      boardType: "soft",
+      boardProfileId: "soft_155",
+    });
+    expect(soft).toContain(
+      "ボード半径 196mm を掛けてください(誤差距離0.10 ≒ 20mm)"
+    );
   });
 });

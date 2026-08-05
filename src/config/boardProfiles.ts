@@ -19,6 +19,11 @@ export interface BoardProfile {
     inputAreaOuter: number;
   };
   segmentOrder: number[];
+  /**
+   * 外側ダブル外周の実寸半径(mm)。正規化座標(半径=1.0)を実寸へ換算する係数として使う。
+   * 正規化値 1.0 = この値(mm)。
+   */
+  doubleOuterRadiusMm: number;
   /** このボードで標準的な01のスコアリング形式(開始前設定の初期値) */
   defaultScoringStyle: ScoringStyle;
 }
@@ -47,6 +52,7 @@ export const STEEL_BOARD: BoardProfile = {
     inputAreaOuter: 1.3,
   },
   segmentOrder: STANDARD_SEGMENT_ORDER,
+  doubleOuterRadiusMm: 170,
   defaultScoringStyle: "steel",
 };
 
@@ -69,6 +75,7 @@ export const SOFT_BOARD: BoardProfile = {
     inputAreaOuter: 1.3,
   },
   segmentOrder: STANDARD_SEGMENT_ORDER,
+  doubleOuterRadiusMm: 196,
   defaultScoringStyle: "fat_bull",
 };
 

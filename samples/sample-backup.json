@@ -2,7 +2,7 @@
   "format": "darts-training-analyzer-backup",
   "backupVersion": 3,
   "createdAt": "2026-01-01T10:30:00.000Z",
-  "appVersion": "1.25.0",
+  "appVersion": "2.5.0",
   "counts": {
     "settings": 1,
     "players": 1,
@@ -553,6 +553,32 @@
           "averageErrorDistance": 0.3,
           "outboardCount": 1,
           "outboardRate": 0.3333333333333333
+        },
+        "grouping": {
+          "status": "available",
+          "validSetCount": 1,
+          "groupingThrowCount": 3,
+          "unavailableReasons": [
+            "bounce_out",
+            "outboard"
+          ],
+          "averagePairDistance": 0.17453559924999296,
+          "maximumPairDistance": 0.22360679774997894,
+          "medianPairDistance": 0.19999999999999996,
+          "perSet": [
+            {
+              "maxPairDistance": 0.22360679774997894,
+              "averagePairDistance": 0.17453559924999296
+            }
+          ],
+          "averageDiameter": 0.22360679774997894,
+          "medianDiameter": 0.22360679774997894,
+          "firstHalfAverageDiameter": 0.22360679774997894,
+          "interDartDistances": {
+            "d1d2": 0.1,
+            "d2d3": 0.22360679774997894,
+            "d1d3": 0.19999999999999996
+          }
         },
         "calculatedAt": "2026-01-01T10:30:00.000Z"
       }
