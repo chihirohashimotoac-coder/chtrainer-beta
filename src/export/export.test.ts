@@ -28,6 +28,7 @@ import {
   landingFromCoordinate,
   landingBounceOut,
   landingFromSegment,
+  landingOutboardDirection,
 } from "../domain/landing";
 import { fmtNum } from "../utils/format";
 import { SOFT_BOARD, STEEL_BOARD } from "../config/boardProfiles";
@@ -1587,56 +1588,55 @@ describe("入力精度に応じた分析指示の切替", () => {
   );
 
   it("記録済み着弾の精度から区分を判定する", () => {
-    const coordinateSession = fixtureSession();
     expect(
-      inputPrecisionModeOf(
-        calculateStatistics("s", 6, throws),
-        coordinateSession
-      )
+      inputPrecisionModeOf(calculateStatistics("s", 6, throws))
     ).toBe("coordinate");
     expect(
-      inputPrecisionModeOf(
-        calculateStatistics("s", 3, segmentThrows),
-        fixtureSession({ inputMethod: "simple" })
-      )
+      inputPrecisionModeOf(calculateStatistics("s", 3, segmentThrows))
     ).toBe("simple");
     expect(
-      inputPrecisionModeOf(
-        calculateStatistics("s", 3, mixedPrecisionThrows()),
-        coordinateSession
-      )
+      inputPrecisionModeOf(calculateStatistics("s", 3, mixedPrecisionThrows()))
     ).toBe("mixed");
   });
 
-  it("精度付きの着弾が1件もなければセッション設定へフォールバックする", () => {
-    const bounceOnly = buildThrows(
-      [{ target: T20, landing: landingBounceOut() }],
-      1
+  it("位置が記録された投擲が0件ならセッション設定へフォールバックしない", () => {
+    // バウンスアウト(unknown)と方向のみのアウトボード(direction_only)は
+    // どちらのカウントにも入らない。設定値だけを根拠に「座標がある」と
+    // 宣言すると、存在しないデータの分析をAIへ求めることになる。
+    const noPosition = buildThrows(
+      [
+        { target: T20, landing: landingBounceOut() },
+        { target: T20, landing: landingOutboardDirection("up") },
+      ],
+      2
     );
-    const stats1 = calculateStatistics("s", 1, bounceOnly);
-    expect(stats1.coordinateInputCount).toBe(0);
-    expect(stats1.approximateInputCount).toBe(0);
-    expect(inputPrecisionModeOf(stats1, fixtureSession())).toBe("coordinate");
-    expect(
-      inputPrecisionModeOf(stats1, fixtureSession({ inputMethod: "simple" }))
-    ).toBe("simple");
-    // スナップショットの入力方式を優先する
-    expect(
-      inputPrecisionModeOf(
-        stats1,
-        fixtureSession({
-          inputMethod: "coordinate",
-          contextSnapshot: {
-            capturedAt: "2026-01-01T10:00:00.000Z",
-            displayName: "P",
-            dominantHand: "right",
-            dartColors: ["#000", "#111", "#222"],
-            boardType: "steel",
-            inputMethod: "simple",
-          },
-        })
-      )
-    ).toBe("simple");
+    const stats0 = calculateStatistics("s", 2, noPosition);
+    expect(stats0.coordinateInputCount).toBe(0);
+    expect(stats0.approximateInputCount).toBe(0);
+    // セッション設定が座標入力でも簡易入力でも none になる
+    expect(inputPrecisionModeOf(stats0)).toBe("none");
+  });
+
+  it("位置0件では位置に基づく分析を分析不能と明記させる", () => {
+    const noPosition = buildThrows(
+      [
+        { target: T20, landing: landingBounceOut() },
+        { target: T20, landing: landingOutboardDirection("up") },
+      ],
+      2
+    );
+    for (const inputMethod of ["coordinate", "simple"] as const) {
+      const md = build(noPosition, { inputMethod });
+      expect(md).toContain("着弾位置が特定できた投擲が1件もありません");
+      expect(md).toContain("「分析不能(データなし)」と明記");
+      expect(md).toContain("位置に依存しない情報だけです");
+      // 存在しないデータの分析を求める指示を出さない
+      expect(md).not.toContain("本データは詳細なX/Y座標");
+      expect(md).not.toContain("本データはセグメント単位の簡易入力です");
+      expect(md).not.toContain("詳細座標入力と簡易入力が混在しています");
+      // mm換算の指示も出さない
+      expect(md).not.toContain("を掛けてください");
+    }
   });
 
   it("詳細座標入力では左右・上下の偏差を個別に分析させる", () => {

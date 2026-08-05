@@ -1,7 +1,7 @@
 /** アプリ全体の上限・閾値を一元管理する定数 */
 
 export const APP_NAME = "CH Darts Training Analyzer";
-export const APP_VERSION = "2.5.0";
+export const APP_VERSION = "2.6.0";
 
 /** セット数の制約 */
 export const MIN_SETS = 20;

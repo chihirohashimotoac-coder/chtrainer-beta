@@ -263,22 +263,28 @@ export const OUTPUT_FORMAT_INSTRUCTIONS = `## 回答のフォーマットとト�
  * セッション設定(inputMethod)ではなく実際に記録された着弾の精度から決める。
  * スキル診断のR1グルーピングは簡易入力セッションでも詳細座標を要求するため、
  * 1セッション内で両方式が混在しうる(mixed)。
+ * 位置が特定できた投擲が1件もない場合は none とし、位置に基づく分析指示を出さない。
  */
-export type InputPrecisionMode = "coordinate" | "simple" | "mixed";
+export type InputPrecisionMode = "coordinate" | "simple" | "mixed" | "none";
 
-/** 記録済み着弾の精度から分析指示の切替区分を判定する */
-export function inputPrecisionModeOf(
-  stats: SessionStatistics,
-  session: TrainingSession
-): InputPrecisionMode {
+/**
+ * 記録済み着弾の精度から分析指示の切替区分を判定する。
+ *
+ * positionPrecision が direction_only(方向のみのアウトボード)・unknown(バウンスアウト)の
+ * 投擲はどちらのカウントにも入らない。そのためすべての投擲がこれらだけのセッションでは
+ * 両カウントが0になる。ここでセッション設定(inputMethod)へフォールバックすると、
+ * 着弾位置が1件もないのに「X/Y座標を含む」「セグメント単位の位置がある」と宣言する
+ * 指示文を出すことになり、存在しないデータの分析をAIへ求めてしまう。
+ * 設定値は「ユーザーが何を選んだか」でしかなく、位置が記録された証拠ではないため、
+ * 実データが0件のときは none を返す。
+ */
+export function inputPrecisionModeOf(stats: SessionStatistics): InputPrecisionMode {
   const coordinate = stats.coordinateInputCount;
   const approximate = stats.approximateInputCount;
   if (coordinate > 0 && approximate > 0) return "mixed";
   if (coordinate > 0) return "coordinate";
   if (approximate > 0) return "simple";
-  // バウンスアウトのみ等で精度付き着弾が1件もない場合はセッション設定へフォールバック
-  const method = session.contextSnapshot?.inputMethod ?? session.inputMethod;
-  return method === "coordinate" ? "coordinate" : "simple";
+  return "none";
 }
 
 /**
@@ -286,6 +292,8 @@ export function inputPrecisionModeOf(
  * 詳細座標では左右(X)・上下(Y)の偏差を軸ごとに、簡易入力では命中率と確率推移を中心に、
  * と分析の主対象を切り替える。簡易入力の座標はエリア代表点の概算値であり、
  * mm単位の偏差を根拠にすると誤った精度の結論が出るため明示的に禁止する。
+ * 着弾位置が1件も記録されていない場合(none)は、位置に基づく分析をすべて分析不能とし、
+ * 存在しないデータについて指示・推測させない。
  */
 export function inputPrecisionSection(
   mode: InputPrecisionMode,
@@ -313,12 +321,23 @@ export function inputPrecisionSection(
     `- 結論ごとに、どちらの精度のデータに基づく指摘かを明示してください。`,
     `- ${mmNote}`,
   ].join("\n");
+  // 位置が記録された投擲が0件。設定上の入力方式には触れず、
+  // 位置に基づく分析はすべて分析不能として扱わせる。
+  const noneBody = [
+    `本データには着弾位置が特定できた投擲が1件もありません(すべてバウンスアウト、方向のみの記録、または位置不明)。着弾位置に基づく分析は行わないでください。`,
+    `- 左右・上下の偏差、平均誤差距離、mm換算、グルーピング、着弾座標の分布、ターゲット別の命中傾向は、いずれも「分析不能(データなし)」と明記してください。数値を推測で補ったり、傾向があるかのように述べたりしないでください。`,
+    `- 分析できるのは位置に依存しない情報だけです。アウトボード・バウンスアウトの発生数と発生タイミング(投順・セット・経過時間)、自己評価の時間変化、環境情報、セッションメモを対象にしてください。`,
+    `- 原因仮説を述べる場合は、着弾位置の裏付けが取れないことを確からしさに反映し、追加確認が必要な項目として扱ってください。`,
+    `- 次回の記録方法(着弾位置を残すこと)の提案は有用ですが、それを今回のフォームの結論にはしないでください。`,
+  ].join("\n");
   const body =
     mode === "coordinate"
       ? coordinateBody
       : mode === "simple"
         ? simpleBody
-        : mixedBody;
+        : mode === "mixed"
+          ? mixedBody
+          : noneBody;
   return [
     "### 入力精度に応じた分析指示",
     "",
@@ -1039,7 +1058,7 @@ export function buildAnalysisMarkdown(input: MarkdownInput): string {
   out.push("");
   out.push(ANALYSIS_INSTRUCTIONS);
   out.push("");
-  out.push(inputPrecisionSection(inputPrecisionModeOf(stats, session), stats, session));
+  out.push(inputPrecisionSection(inputPrecisionModeOf(stats), stats, session));
   out.push("");
   const focusCategory = focusCategoryOf(session);
   if (focusCategory === "skill") {
