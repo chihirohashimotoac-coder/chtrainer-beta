@@ -27,6 +27,7 @@ import {
 import { buildAction } from "./actions";
 import {
   LOCAL_COACH_RULES,
+  withCorroboration,
   type LocalCoachBaseline,
   type RuleContext,
   type RuleFinding,
@@ -146,6 +147,15 @@ export function buildBaseline(
     (sum, x) => sum + (x.stats.scorableThrows ?? x.stats.completedThrows),
     0
   );
+  const hitCountTotal = sessions.reduce((sum, x) => sum + x.stats.exactHits, 0);
+  // 単調性の判定は時系列でなければ意味がないため、古い順へ並べ直す
+  const chronological = sessions
+    .slice()
+    .sort((a, b) => {
+      const diff =
+        Date.parse(a.session.startedAt) - Date.parse(b.session.startedAt);
+      return diff !== 0 ? diff : a.session.id.localeCompare(b.session.id);
+    });
   const coordinateErrors = sessions
     .map((x) => x.stats.coordinateError.averageErrorDistance)
     .filter((v): v is number => v != null);
@@ -170,10 +180,15 @@ export function buildBaseline(
     sessionCount: sessions.length,
     hitRate: mean(hitRates),
     hitRateSamples,
+    hitCountTotal,
     coordinateErrorMean: mean(coordinateErrors),
     coordinateErrorSamples,
     groupingDiameter: mean(groupingDiameters),
     groupingSets,
+    history: chronological.map((x) => ({
+      hitRate: x.stats.scorableExactHitRate ?? x.stats.exactHitRate,
+      coordinateErrorMean: x.stats.coordinateError.averageErrorDistance,
+    })),
   };
 }
 
@@ -262,23 +277,52 @@ function dedupeBySubject(findings: readonly RuleFinding[]): RuleFinding[] {
   return out;
 }
 
-/** priority昇順、同値ならid辞書順で安定に並べる（決定論性の担保）。 */
+/**
+ * 所見の並べ替え。
+ *
+ * ルールの記述順ではなく「大きくて確からしい所見」を先頭にするため、
+ * severity(効果量 × 確からしさの重み)の降順を第1キーにする。
+ * severity が同じときは種別の既定優先度、最後に id の辞書順で安定させる
+ * （同じ入力から必ず同じ順序になることを保証する）。
+ */
 function sortFindings(findings: readonly RuleFinding[]): RuleFinding[] {
-  return findings
-    .slice()
-    .sort((a, b) =>
-      a.priority !== b.priority
-        ? a.priority - b.priority
-        : a.id.localeCompare(b.id)
-    );
+  return findings.slice().sort((a, b) => {
+    if (b.severity !== a.severity) return b.severity - a.severity;
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 function trimEvidence(finding: RuleFinding): LocalCoachFinding {
-  const { polarity: _polarity, ...rest } = finding;
+  // polarity と confidenceInput はエンジン内部の作業用フィールドなので出力しない
+  const { polarity: _polarity, confidenceInput: _input, ...rest } = finding;
   return {
     ...rest,
     evidence: finding.evidence.slice(0, MAX_EVIDENCE_PER_FINDING),
   };
+}
+
+/**
+ * 同じ主題(subject)を同じ向きで指している所見が複数あれば、それらは互いの
+ * 裏付けになる。例えば「3投目の横方向ばらつきが大きい」と「3投目の命中率が
+ * 低い」は独立した指標で同じ投順を指しており、確からしさ「高」の条件である
+ * 「複数指標で再現」に当たる。
+ *
+ * ルール個々では自分以外の所見を知り得ないため、全ルールの結果が出そろった
+ * この段階でまとめて裏付け条件数を数え直す。
+ */
+function applyCorroboration(findings: readonly RuleFinding[]): RuleFinding[] {
+  const counts = new Map<string, number>();
+  for (const finding of findings) {
+    if (finding.polarity === "unavailable") continue;
+    const key = `${finding.polarity}:${finding.subject ?? finding.id}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return findings.map((finding) => {
+    if (finding.polarity === "unavailable") return finding;
+    const key = `${finding.polarity}:${finding.subject ?? finding.id}`;
+    return withCorroboration(finding, counts.get(key) ?? 1);
+  });
 }
 
 /** 比較可能な過去セッションがない場合の定型文（推測で差を作らない）。 */
@@ -357,7 +401,7 @@ export function analyzeLocalCoach(
     };
     for (const rule of LOCAL_COACH_RULES) raw.push(...rule(ctx));
   }
-  const ordered = sortFindings(raw);
+  const ordered = sortFindings(applyCorroboration(raw));
   const positives = dedupeBySubject(
     ordered.filter((f) => f.polarity === "positive")
   );

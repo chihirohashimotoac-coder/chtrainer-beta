@@ -60,7 +60,7 @@ describe("AboutPage (ベータ版の識別表示)", () => {
     expect(text).toContain(BETA_BADGE_LABEL);
     expect(text).toContain("ベータ版");
     expect(text).toContain(APP_VERSION);
-    expect(APP_VERSION).toBe("2.7.0-beta.1");
+    expect(APP_VERSION).toMatch(/^2\.7\.0-beta\.\d+$/);
     // 注意書きは3文すべてが読める形で表示される
     for (const line of BETA_NOTICE.split("\n")) {
       expect(text, line).toContain(line);

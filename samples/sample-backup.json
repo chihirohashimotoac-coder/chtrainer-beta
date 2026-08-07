@@ -2,7 +2,7 @@
   "format": "darts-training-analyzer-backup",
   "backupVersion": 3,
   "createdAt": "2026-01-01T10:30:00.000Z",
-  "appVersion": "2.7.0-beta.1",
+  "appVersion": "2.7.0-beta.2",
   "counts": {
     "settings": 1,
     "players": 1,

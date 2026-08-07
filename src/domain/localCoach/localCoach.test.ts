@@ -277,7 +277,7 @@ describe("ローカルコーチ分析（分母と前投関係）", () => {
     const { session, stats, throws } = lateralSpreadScenario();
     const report = analyzeLocalCoach({ session, stats, throws });
     const finding = report.issueFindings.find((f) =>
-      f.id.startsWith("dart_order_lateral_spread")
+      f.id.startsWith("dart_order_x_spread")
     );
     expect(finding).toBeDefined();
     const orderEvidence = finding!.evidence.filter((e) =>
@@ -446,6 +446,8 @@ describe("ローカルコーチ分析（出力件数と推奨メニュー）", (
         id: "test",
         kind: "statistical_trend",
         priority: 1,
+        effect: 0.5,
+        severity: 0.35,
         title: "t",
         summary: "s",
         confidence: "medium",
@@ -646,7 +648,7 @@ describe("ローカルコーチ分析（比較対象の選定と根拠の一致�
 
     // 投順別の分母は SessionStatistics の命中判定対象数と一致する
     const orderFinding = report.issueFindings.find((f) =>
-      f.id.startsWith("dart_order_lateral_spread")
+      f.id.startsWith("dart_order_x_spread")
     );
     if (orderFinding) {
       const third = orderFinding.evidence.find((e) =>
@@ -714,6 +716,6 @@ describe("ローカルコーチ分析（比較対象の選定と根拠の一致�
     const report = analyzeLocalCoach({ session, stats, throws });
     const all = [...report.issueFindings, ...(report.positiveFinding ? [report.positiveFinding] : [])];
     expect(all.some((f) => f.id.startsWith("axis_"))).toBe(false);
-    expect(all.some((f) => f.id.startsWith("dart_order_lateral_spread"))).toBe(false);
+    expect(all.some((f) => f.id.startsWith("dart_order_x_spread"))).toBe(false);
   });
 });

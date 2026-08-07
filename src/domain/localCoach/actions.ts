@@ -311,6 +311,249 @@ const TEMPLATES: Record<string, ActionTemplate> = {
     ],
     stopOrChangeCriteria: COMMON_STOP_CRITERIA,
   }),
+  dart_order_vertical_spread: (finding) => ({
+    id: "action_dart_order_vertical_spread",
+    targetFindingId: finding.id,
+    title: "投順による縦方向ばらつきの再現性を確認する",
+    purpose:
+      "特定の投順でだけ縦方向のばらつきが大きくなる傾向が、投順に依存して再現するかを確認する。",
+    method:
+      "同一ターゲットへ15セット(45投)投げ、3投とも同じ立ち位置・同じ狙点で記録する。詳細座標入力で全投擲を記録する。",
+    throwCount: 45,
+    focus: "投順によらず同じ狙点を見続けること。立ち位置を毎セット同じにする。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "投順ごとの誤差Y(上が正)",
+      "投順ごとの誤差サンプル数",
+      "各セットのグルーピング径",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}が、他の投順の平均の130%以内に収まる。`,
+      "全体の平均グルーピング径を今回より悪化させない。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "投順別の分母がいずれも10投未満の場合は、セット数を増やしてから判定してください。",
+    ],
+  }),
+  half_outboard_up: (finding) => ({
+    id: "action_half_outboard_up",
+    targetFindingId: finding.id,
+    title: "後半の盤外ミス増加が投擲数に依存するかを確認する",
+    purpose:
+      "後半で盤外へ外れる割合が増える傾向が、投擲数の増加に伴って再現するかを確認する。",
+    method:
+      "同一ターゲットへ20セット(60投)を、10セットごとに区切って記録する。区切りの間に2分間の休憩を入れ、区間別のアウトボード率を比較する。",
+    throwCount: 60,
+    focus: "各区間の開始時に同じ準備動作から入ること。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "区間ごとのアウトボード数と完了投擲数",
+      "アウトボードした投擲の外れ方向",
+      "区間ごとの自己評価(疲労度・集中度)",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}と前半区間との差が10ポイント以内に収まる。`,
+      "各区間の完了投擲数が10投以上ある。",
+    ],
+    stopOrChangeCriteria: COMMON_STOP_CRITERIA,
+  }),
+  grouping_inter_dart: (finding) => ({
+    id: "action_grouping_inter_dart",
+    targetFindingId: finding.id,
+    title: "セット内で着弾間隔が広がる位置を特定する",
+    purpose:
+      "同一セットの3投のうち、どの投擲間で着弾が離れるかが再現するかを確認する。",
+    method:
+      "同一ターゲットへ15セット(45投)を詳細座標で記録し、1→2投目・2→3投目・1→3投目の距離をセットごとに残す。",
+    throwCount: 45,
+    focus: "3投とも同じ狙点へ投げること。前の投擲の位置に合わせて狙点を変えない。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "セットごとの1→2投目の距離",
+      "セットごとの2→3投目の距離",
+      "有効セット数",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}が、もう一方の投順間距離の115%以内に収まる。`,
+      "有効セット数が5セット以上ある。",
+    ],
+    stopOrChangeCriteria: COMMON_STOP_CRITERIA,
+  }),
+  weak_target: (finding) => ({
+    id: "action_weak_target",
+    targetFindingId: finding.id,
+    title: "特定ターゲットの命中率差が再現するかを確認する",
+    purpose:
+      "命中率が低かったターゲットの結果が、出題数の偏りによる見かけの差か、繰り返しても再現する差かを確認する。",
+    method:
+      "対象のターゲットと、比較用に命中率が高かったターゲットを、それぞれ10セット(30投)ずつブロックに分けて記録する。出題数を揃えることが条件。",
+    throwCount: 60,
+    focus:
+      "ターゲットごとに同じ手順で構えに入ること。ブロックの切り替わりで手順を変えない。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "ターゲットごとの命中数と命中判定対象投擲数",
+      "ターゲットごとの外れ方向",
+      "ターゲットごとの平均誤差距離",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}と比較用ターゲットの命中率差が10ポイント以内に収まる。`,
+      "両ターゲットの分母がいずれも10投以上ある。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "出題数を揃えられなかった場合は、命中率の差を判定せず記録だけ残してください。",
+    ],
+  }),
+  cricket_switch_marks_down: (finding) => ({
+    id: "action_cricket_switch_marks_down",
+    targetFindingId: finding.id,
+    title: "ナンバー切替直後のマーク低下が再現するかを確認する",
+    purpose:
+      "セット内でナンバーが切り替わった直後に平均マークが下がる傾向が再現するかを確認する。",
+    method:
+      "同一ナンバー3投のセットを10セット(30投)、セット内でナンバーが切り替わるセットを10セット(30投)、ブロックに分けて記録する。両条件の1投平均マークを比較する。",
+    throwCount: 60,
+    focus:
+      "切替のあるセットでも、切替前と同じ準備時間を取ること。切替直後だけ急がない。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "条件ごとの総マーク数と投擲数",
+      "条件ごとのノーマーク数",
+      "切替直後の投擲数(セットの1投目を除く)",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}と同一ターゲット継続との差が0.3マーク以内に収まる。`,
+      "切替直後の分母が10投以上ある。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "セットの1投目は前投との関係が定義できないため、集計へ含めないでください。",
+    ],
+  }),
+  cricket_no_mark_high: (finding) => ({
+    id: "action_cricket_no_mark_high",
+    targetFindingId: finding.id,
+    title: "ノーマークが集中しているナンバーを特定する",
+    purpose:
+      "マークが付かなかった投擲が、特定のナンバーに集中しているのか全体に散っているのかを確認する。",
+    method:
+      "練習で使うナンバーを4つに絞り、各5セット(計60投)をナンバーごとのブロックで記録する。ナンバーごとのノーマーク数を残す。",
+    throwCount: 60,
+    focus: "ナンバーごとに同じ手順で構えに入ること。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "ナンバーごとのノーマーク数と投擲数",
+      "ナンバーごとの総マーク数",
+      "外した際に着弾したセグメント",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}が全体で40%未満に収まる。`,
+      "各ナンバーの分母が10投以上ある。",
+    ],
+    stopOrChangeCriteria: COMMON_STOP_CRITERIA,
+  }),
+  zero_one_ring_gap: (finding) => ({
+    id: "action_zero_one_ring_gap",
+    targetFindingId: finding.id,
+    title: "リング種別による命中率差が再現するかを確認する",
+    purpose:
+      "Bull・トリプル・ダブルの間に見えた命中率差が、出題数の偏りではなく繰り返しても再現する差かを確認する。",
+    method:
+      "命中率が低かったリングと高かったリングを、それぞれ10セット(30投)ずつブロックに分けて記録する。出題数を揃えることが条件。",
+    throwCount: 60,
+    focus: "リングごとに同じ手順で構えに入ること。狙点をリングの中心に固定する。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "リングごとの命中数と命中判定対象投擲数",
+      "リングごとの外れ方向(内側/外側/上下)",
+      "リングごとの平均誤差距離",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}と比較用リングの命中率差が10ポイント以内に収まる。`,
+      "両リングの分母がいずれも10投以上ある。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "練習データからは実戦のフィニッシュ成功率を判定できないため、比較は練習内に留めてください。",
+    ],
+  }),
+  tempo_change: (finding) => ({
+    id: "action_tempo_change",
+    targetFindingId: finding.id,
+    title: "投擲間隔を一定にした場合との差を確認する",
+    purpose:
+      "セット内の投擲間隔が後半で変化する状態が、精度の変化と一緒に動くかを確認する。",
+    method:
+      "同一ターゲットへ10セット(30投)を通常どおり記録する。続けて、1投ごとの間隔を数えて一定に保った状態で10セット(30投)を記録し、2条件の間隔中央値と誤差を比較する。変更するのは間隔の一定性だけとする。",
+    throwCount: 60,
+    focus: "後半条件では、セット内の投擲間隔を毎回同じ数え方で保つこと。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "条件ごとの投擲間隔(セットの1投目を除く)",
+      "条件ごとの平均誤差距離",
+      "条件ごとの命中数と命中判定対象投擲数",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}と前半区間との差が25%以内に収まる。`,
+      "平均誤差距離を今回より悪化させない。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "間隔を意識したことで投擲そのものがぎこちなくなる場合は、この実験を中止してください。",
+    ],
+  }),
+  trend_hit_rate_down: (finding) => ({
+    id: "action_trend_hit_rate_down",
+    targetFindingId: finding.id,
+    title: "命中率の連続した低下が条件変更と対応するかを確認する",
+    purpose:
+      "複数セッションにわたる命中率の低下が、記録条件や機材の変更と重なっていないかを切り分ける。",
+    method:
+      "直前まで使っていた条件(機材・ボード・入力方式・セット数)を1つも変えずに、同じモードでもう1回実施する。変更した項目がある場合は、変更前の条件へ戻して記録する。",
+    throwCount: 60,
+    focus: "条件を1つも変えずに実施すること。変えた項目があればメモへ残す。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "完全命中率と命中判定対象投擲数",
+      "使用した機材とボード種別",
+      "前回から変更した項目(なければ「なし」と記録)",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}が下げ止まり、前回の命中率と同等以上になる。`,
+      "命中判定対象投擲数が10投以上ある。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "条件を変えて実施した場合は比較対象にならないため、判定せずに記録だけ残してください。",
+    ],
+  }),
+  trend_error_distance_up: (finding) => ({
+    id: "action_trend_error_distance_up",
+    targetFindingId: finding.id,
+    title: "誤差距離の連続した拡大が条件変更と対応するかを確認する",
+    purpose:
+      "複数セッションにわたる平均誤差距離の拡大が、記録条件や機材の変更と重なっていないかを切り分ける。",
+    method:
+      "直前まで使っていた条件(機材・ボード・入力方式・セット数)を1つも変えずに、詳細座標のまま同じモードでもう1回実施する。",
+    throwCount: 60,
+    focus: "条件を1つも変えずに実施すること。変えた項目があればメモへ残す。",
+    avoid: COMMON_AVOID,
+    recordItems: [
+      "平均誤差距離(詳細座標のみ)と誤差サンプル数",
+      "誤差X・誤差Yの平均と標準偏差",
+      "前回から変更した項目(なければ「なし」と記録)",
+    ],
+    successCriteria: [
+      `${primaryMetric(finding)}が拡大を止め、前回の平均誤差距離の115%以内に収まる。`,
+      "誤差サンプル数が10投以上ある。",
+    ],
+    stopOrChangeCriteria: [
+      ...COMMON_STOP_CRITERIA,
+      "条件を変えて実施した場合は比較対象にならないため、判定せずに記録だけ残してください。",
+    ],
+  }),
   baseline_hit_rate_down: (finding) => ({
     id: "action_baseline_hit_rate_down",
     targetFindingId: finding.id,

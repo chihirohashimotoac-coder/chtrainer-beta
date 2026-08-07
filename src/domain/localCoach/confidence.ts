@@ -1,5 +1,6 @@
 import type { LocalCoachConfidence } from "./types";
 import {
+  CONFIDENCE_WEIGHTS,
   LOW_COMPLETION_RATIO,
   MIN_ANALYZABLE_SAMPLE,
   MIN_CORROBORATING_CONDITIONS_FOR_HIGH,
@@ -22,6 +23,12 @@ export interface ConfidenceInput {
    * undefined = 予定投擲数が不明（旧データ）。この場合は減点しない。
    */
   completionRatio?: number;
+  /**
+   * 差の95%区間が0をまたがない（＝観測した差の向きが推定の幅の中で
+   * 一貫している）か。false のとき確からしさを1段階下げる。
+   * undefined = 区間を算出していない指標。この場合は調整しない。
+   */
+  differenceExcludesZero?: boolean;
 }
 
 const ORDER: LocalCoachConfidence[] = ["high", "medium", "low"];
@@ -50,9 +57,17 @@ export function isAnalyzableSample(sampleSize: number): boolean {
  *  - 30投以上 → 裏付け条件が MIN_CORROBORATING_CONDITIONS_FOR_HIGH 以上なら
  *    "high"、1条件だけの観測なら "medium"（1指標の再現は「高」に足りない）
  *  - 完了率が LOW_COMPLETION_RATIO(50%) 未満の中断セッションは1段階下げる
+ *  - 差の95%区間が0をまたぐ（差の向きが推定の幅の中で反転しうる）なら
+ *    1段階下げる。閾値を超えていても、標本の少なさで幅が広い推定を
+ *    強い根拠として扱わないための調整。
  */
 export function calculateConfidence(input: ConfidenceInput): LocalCoachConfidence {
-  const { sampleSize, corroboratingConditions, completionRatio } = input;
+  const {
+    sampleSize,
+    corroboratingConditions,
+    completionRatio,
+    differenceExcludesZero,
+  } = input;
   let value: LocalCoachConfidence;
   if (sampleSize < MIN_ANALYZABLE_SAMPLE) {
     value = "low";
@@ -63,10 +78,24 @@ export function calculateConfidence(input: ConfidenceInput): LocalCoachConfidenc
   } else {
     value = "medium";
   }
+  if (differenceExcludesZero === false) {
+    value = downgrade(value);
+  }
   if (completionRatio != null && completionRatio < LOW_COMPLETION_RATIO) {
     value = downgrade(value);
   }
   return value;
+}
+
+/**
+ * 効果量と確からしさから、課題の並べ替えに使う総合スコアを出す。
+ * ルールの記述順ではなく「大きくて確からしい課題」を先頭にするための指標。
+ */
+export function severityOf(
+  effect: number,
+  confidence: LocalCoachConfidence
+): number {
+  return effect * CONFIDENCE_WEIGHTS[confidence];
 }
 
 export const CONFIDENCE_LABELS: Record<LocalCoachConfidence, string> = {
