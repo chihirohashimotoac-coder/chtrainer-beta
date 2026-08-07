@@ -74,10 +74,10 @@ describe("ベータ版の保存領域分離", () => {
 
   it("Service Workerのキャッシュ名がベータ専用である", () => {
     expect(swSource).toContain('const CACHE_VERSION = "dta-beta-v__APP_VERSION__"');
-    // 本番と同じ "dta-v..." 形式へ戻っていないこと
-    expect(swSource).not.toMatch(
-      new RegExp(`CACHE_VERSION\\s*=\\s*"${PRODUCTION_CACHE_PREFIX}`)
-    );
+    // 本番と同じ "dta-v..." 形式へ戻っていないこと。
+    // コメント内も含めて本番の接頭辞を残さない: 残すとビルド成果物へ本番識別子が
+    // 現れ、「本番識別子が混入していないか」の検査(grep等)が誤検知で意味を失う。
+    expect(swSource).not.toContain(`"${PRODUCTION_CACHE_PREFIX}`);
   });
 
   it("localStorageのキーがベータ専用で、HTMLの先行適用スクリプトと一致する", () => {

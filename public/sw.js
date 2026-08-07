@@ -11,8 +11,10 @@
 // sw.js の内容が変わり、Service Worker の更新検知(updatefound)と更新バナーが
 // 正しく発火する。dev では SW 未登録のためプレースホルダのままでも影響しない。
 // ベータ版は本番版と同一オリジン(github.io)で公開されるため、キャッシュ名を
-// 本番("dta-v...")と必ず別名にする。同名だと本番アプリのキャッシュを
-// activate 時の古いキャッシュ削除で消してしまう。
+// 本番版のもの(接頭辞に beta を含まない名前)と必ず別名にする。同名だと
+// activate 時の古いキャッシュ削除で、本番アプリのキャッシュまで消してしまう。
+// 本番版の識別子はコメントにも書かない(src/beta/betaIsolation.test.ts が
+// 機械的に検査するため、ここへ書き写すと検査が意味を失う)。
 const CACHE_VERSION = "dta-beta-v__APP_VERSION__";
 const APP_SHELL = [
   "./",
