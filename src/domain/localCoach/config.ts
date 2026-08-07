@@ -13,7 +13,7 @@
  * 分析結果はIndexedDBへ保存せず毎回再計算するため、この版数は
  * 「そのMarkdownを生成した時点のルール」を示す唯一の手掛かりになる。
  */
-export const ENGINE_VERSION = "local-coach-v2.0";
+export const ENGINE_VERSION = "local-coach-v3.0";
 
 /**
  * 傾向を語ってよい最小サンプル数。
@@ -156,6 +156,27 @@ export const CONFIDENCE_WEIGHTS = {
   low: 0.4,
 } as const;
 
+/**
+ * 個人基準（本人の過去中央値・変動幅）を作るために必要な最小セッション数。
+ * 2件では中央値も変動幅も1点の外れ値で動くため、3件を下限とする。
+ * これを満たさない場合は基準を捏造せず N/A とする。
+ */
+export const MIN_PERSONAL_BASELINE_SESSIONS = 3;
+
+/**
+ * 1つの候補につき生成する原因仮説の上限。
+ * 候補を多く並べるほど外部AIが検証しきれず、
+ * 「もっともらしい候補の羅列」になるため2件に絞る。
+ */
+export const MAX_HYPOTHESES_PER_CANDIDATE = 2;
+
+/**
+ * 分析不能時のローカルコーチ節の文字数上限。
+ * 判定できないときに長い仮説や定型の身体原因リストを繰り返すと、
+ * 情報量ゼロのまま依頼文だけが膨らむため、通常時より強く絞る。
+ */
+export const MAX_INSUFFICIENT_SECTION_CHARS = 600;
+
 /** 出力件数の上限（Markdownを簡潔に保つため）。 */
 export const MAX_POSITIVE_FINDINGS = 1;
 export const MAX_ISSUE_FINDINGS = 2;
@@ -167,7 +188,9 @@ export const MAX_EVIDENCE_PER_FINDING = 4;
 
 /**
  * Markdownのローカルコーチ節の文字数上限。
+ * v3で構造化要素（観測事実・本人基準・仮説・実験）を追加したぶん、
+ * 依頼文全体のトークン量が v2 を上回らないよう上限を 1800 から引き下げた。
  * 既存の統計セクションの再掲で依頼文が膨らむのを防ぐため、
  * 判断に直接使った数値だけを根拠として出す。
  */
-export const MAX_LOCAL_COACH_SECTION_CHARS = 1800;
+export const MAX_LOCAL_COACH_SECTION_CHARS = 1500;

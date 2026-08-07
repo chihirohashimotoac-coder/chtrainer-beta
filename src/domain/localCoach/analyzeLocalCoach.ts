@@ -25,6 +25,8 @@ import {
   MIN_GROUPING_SETS,
 } from "./config";
 import { buildAction } from "./actions";
+import { areIndistinguishable, buildHypotheses, type HypothesisContext } from "./hypotheses";
+import { buildPersonalBaseline, unavailableBaseline } from "./personalBaseline";
 import {
   LOCAL_COACH_RULES,
   withCorroboration,
@@ -33,10 +35,15 @@ import {
   type RuleFinding,
 } from "./rules";
 import type {
+  FactPrecision,
   LocalCoachComparisonSource,
+  LocalCoachEvidence,
   LocalCoachFinding,
   LocalCoachReport,
   LocalCoachScopeSummary,
+  ObservedFact,
+  PersonalBaseline,
+  UnrankedCandidate,
 } from "./types";
 
 export interface SessionWithStats {
@@ -278,6 +285,54 @@ function dedupeBySubject(findings: readonly RuleFinding[]): RuleFinding[] {
 }
 
 /**
+ * 仮説生成に渡すセッション横断の観測を組み立てる。
+ *
+ * 自己評価は「ユーザーが実際に操作した項目」だけを測定値として扱う。
+ * untouchedScales に含まれる項目は既定値のままなので、
+ * 変化の有無を判定に使わない（未回答を「変化なし」と読み違えないため）。
+ */
+export function buildHypothesisContext(
+  session: TrainingSession,
+  stats: SessionStatistics,
+  findings: readonly RuleFinding[]
+): HypothesisContext {
+  const firedSubjects = new Set(
+    findings
+      .filter((f) => f.polarity === "issue")
+      .map((f) => f.subject ?? f.id)
+  );
+  const before = session.assessments.find((a) => a.timing === "before");
+  const after = session.assessments.find((a) => a.timing === "after");
+  const measured = (key: "fatigue" | "concentration"): boolean => {
+    if (!before || !after) return false;
+    const untouched = (a: typeof before) =>
+      (a.untouchedScales ?? []).includes(key);
+    return !untouched(before) && !untouched(after);
+  };
+  const changed = (key: "fatigue" | "concentration"): boolean => {
+    if (!before || !after) return false;
+    return before[key] !== after[key];
+  };
+  return {
+    firedSubjects,
+    hasHalfChange: [...firedSubjects].some((s) => s.startsWith("half_")),
+    hasTempoChange: [...firedSubjects].some((s) => s.startsWith("tempo_")),
+    hasOverCorrection: [...firedSubjects].some((s) => s.startsWith("over_correction")),
+    hasTargetSwitchSamples: !findings.some((f) =>
+      f.id.startsWith("target_switch_unmeasured")
+    ),
+    coordinateCount: stats.coordinateInputCount ?? 0,
+    approximateCount: stats.approximateInputCount ?? 0,
+    selfAssessment: {
+      fatigueMeasured: measured("fatigue"),
+      fatigueChanged: measured("fatigue") && changed("fatigue"),
+      concentrationMeasured: measured("concentration"),
+      concentrationChanged: measured("concentration") && changed("concentration"),
+    },
+  };
+}
+
+/**
  * 所見の並べ替え。
  *
  * ルールの記述順ではなく「大きくて確からしい所見」を先頭にするため、
@@ -291,6 +346,163 @@ function sortFindings(findings: readonly RuleFinding[]): RuleFinding[] {
     if (a.priority !== b.priority) return a.priority - b.priority;
     return a.id.localeCompare(b.id);
   });
+}
+
+/** 根拠(evidence)の note から、その値がどの入力精度で算出されたかを判定する。 */
+function precisionOf(evidence: LocalCoachEvidence): FactPrecision {
+  const note = evidence.note ?? "";
+  if (note.includes("詳細座標")) return "coordinate";
+  if (note.includes("簡易入力")) return "approximate";
+  return "precision_independent";
+}
+
+/**
+ * 根拠を観測事実へ変換する。
+ * 事実には原因を一切含めず、値・比較対象・分母・入力精度・区間だけを持たせる。
+ */
+function toObservedFacts(finding: RuleFinding): ObservedFact[] {
+  return finding.evidence.map((evidence) => ({
+    metric: evidence.metric,
+    value: evidence.current,
+    comparisonLabel: evidence.baseline != null ? "比較対象" : undefined,
+    comparisonValue: evidence.baseline,
+    difference: evidence.difference,
+    unit: evidence.unit,
+    sampleSize: evidence.sampleSize,
+    precision: precisionOf(evidence),
+    interval: evidence.interval,
+    note: evidence.note,
+  }));
+}
+
+/** なぜこの候補を優先したかを、効果量・裏付け・本人基準から言語化する。 */
+function priorityReasonOf(finding: RuleFinding, rank: number): string {
+  const parts: string[] = [`優先度${rank}位`];
+  parts.push(`効果量${(finding.effect * 100).toFixed(0)}%相当`);
+  const corroboration = finding.confidenceInput.corroboratingConditions;
+  parts.push(
+    corroboration >= 2
+      ? `独立した${corroboration}指標が同じ主題を裏付け`
+      : "単一指標の観測(確からしさは中まで)"
+  );
+  if (finding.confidenceInput.differenceExcludesZero === false) {
+    parts.push("差の95%区間が0を含むため1段階減点");
+  }
+  if (finding.personalBaseline?.pattern === "continuing_trend") {
+    parts.push("本人基準の変動幅の外で方向が継続");
+  } else if (finding.personalBaseline?.pattern === "single_deviation") {
+    parts.push("本人基準の変動幅の外だが単発");
+  }
+  return parts.join(" / ");
+}
+
+/** この候補について現在測定できていない事項。 */
+function unmeasuredOf(finding: RuleFinding, ctx: HypothesisContext): string[] {
+  const out: string[] = [];
+  if (ctx.coordinateCount < MIN_ANALYZABLE_SAMPLE) {
+    out.push("詳細座標が不足しており、平均位置と散らばりを分けて評価できません");
+  }
+  if (!ctx.hasTargetSwitchSamples) {
+    out.push("セット内ターゲット切替のサンプルが0件です");
+  }
+  if (!ctx.selfAssessment.fatigueMeasured || !ctx.selfAssessment.concentrationMeasured) {
+    out.push("自己評価に未回答項目があり、測定値として扱えません");
+  }
+  if (finding.personalBaseline?.pattern === "unavailable") {
+    out.push(
+      finding.personalBaseline.unavailableReason ?? "本人基準に必要な履歴が不足しています"
+    );
+  }
+  return out.slice(0, 3);
+}
+
+/** この所見と矛盾する、または反証となる観測。 */
+function counterEvidenceOf(finding: RuleFinding, ctx: HypothesisContext): string[] {
+  const out: string[] = [];
+  if (finding.confidenceInput.differenceExcludesZero === false) {
+    out.push("差の95%区間が0を含み、標本の少なさで向きが反転しうる状態です");
+  }
+  if (
+    finding.subject?.startsWith("dart_order_") &&
+    ctx.hasHalfChange
+  ) {
+    out.push("前半・後半の区間でも同じ向きの変化があり、投順だけの問題とは限りません");
+  }
+  if (finding.personalBaseline?.pattern === "within_variation") {
+    out.push("今回の値は本人の過去の変動幅の内側で、通常のばらつきの範囲です");
+  }
+  if (finding.personalBaseline?.pattern === "single_deviation") {
+    out.push("本人基準の変動幅の外ですが方向が継続しておらず、単発の変動の可能性があります");
+  }
+  if (out.length === 0) {
+    out.push("矛盾する観測なし");
+  }
+  return out.slice(0, 2);
+}
+
+/**
+ * 候補に対応する個人基準を作る。
+ * 指標ごとに比較可能な履歴の系列が違うため、候補の subject で切り替える。
+ * 対応する履歴系列がない指標では基準を作らない（捏造しない）。
+ */
+function personalBaselineFor(
+  finding: RuleFinding,
+  stats: SessionStatistics,
+  baseline: LocalCoachBaseline | undefined
+): PersonalBaseline | undefined {
+  const subject = finding.subject ?? finding.id;
+  const wantsHitRate =
+    subject === "baseline_hit_rate" || subject === "trend_hit_rate";
+  const wantsError =
+    subject === "baseline_error_distance" || subject === "trend_error_distance";
+  const wantsGrouping = subject === "grouping_baseline";
+  if (!wantsHitRate && !wantsError && !wantsGrouping) return undefined;
+  if (!baseline) {
+    return unavailableBaseline(
+      finding.primaryMetric ?? subject,
+      0,
+      "比較条件を満たす過去セッションがないため、本人基準は算出できません"
+    );
+  }
+  if (wantsHitRate) {
+    return buildPersonalBaseline({
+      metric: "完全命中率",
+      currentValue: stats.scorableExactHitRate ?? stats.exactHitRate,
+      history: baseline.history.map((h) => h.hitRate),
+      lowerIsBetter: false,
+    });
+  }
+  if (wantsError) {
+    return buildPersonalBaseline({
+      metric: "平均誤差距離(詳細座標のみ)",
+      currentValue: stats.coordinateError.averageErrorDistance,
+      history: baseline.history.map((h) => h.coordinateErrorMean),
+      lowerIsBetter: true,
+    });
+  }
+  return unavailableBaseline(
+    "平均グルーピング径",
+    baseline.sessionCount,
+    "グルーピング径のセッション別履歴は現在保持していないため、本人基準としては算出できません"
+  );
+}
+
+/** 未掲載候補の要約（存在自体を必ず外部AIへ伝えるための最小情報）。 */
+function toUnranked(
+  finding: RuleFinding,
+  rank: number,
+  hiddenReason: string
+): UnrankedCandidate {
+  return {
+    id: finding.id,
+    subject: finding.subject,
+    rank,
+    title: finding.title,
+    confidence: finding.confidence,
+    effect: finding.effect,
+    severity: finding.severity,
+    hiddenReason,
+  };
 }
 
 function trimEvidence(finding: RuleFinding): LocalCoachFinding {
@@ -381,6 +593,8 @@ export function analyzeLocalCoach(
       generatedFrom,
       analyzable: false,
       issueFindings: [],
+      allCandidates: [],
+      unrankedCandidates: [],
       unavailableReasons: reasons,
     };
   }
@@ -401,19 +615,92 @@ export function analyzeLocalCoach(
     };
     for (const rule of LOCAL_COACH_RULES) raw.push(...rule(ctx));
   }
-  const ordered = sortFindings(applyCorroboration(raw));
+  const corroborated = applyCorroboration(raw);
+  // 個人基準は確からしさ・優先理由の材料になるため、並べ替えの前に付与する
+  const withBaseline = corroborated.map((finding) => {
+    const personal = personalBaselineFor(finding, stats, baseline);
+    return personal ? { ...finding, personalBaseline: personal } : finding;
+  });
+  const ordered = sortFindings(withBaseline);
   const positives = dedupeBySubject(
     ordered.filter((f) => f.polarity === "positive")
   );
-  const issues = dedupeBySubject(ordered.filter((f) => f.polarity === "issue"));
+  // 差の95%区間が0をまたぐ候補は、標本のゆらぎだけで向きが反転しうるため
+  // 課題候補として提示しない。確からしさを下げるだけでは、安定したデータでも
+  // 「わずかな差」を課題として並べてしまう（False Positive）。
+  // 区間を算出していない指標（differenceExcludesZero が undefined）は対象外。
+  const noisyIssues = ordered.filter(
+    (f) =>
+      f.polarity === "issue" && f.confidenceInput.differenceExcludesZero === false
+  );
+  const issues = dedupeBySubject(
+    ordered.filter(
+      (f) =>
+        f.polarity === "issue" &&
+        f.confidenceInput.differenceExcludesZero !== false
+    )
+  );
   const unavailable = ordered.filter((f) => f.polarity === "unavailable");
+
+  // 仮説生成に必要な、セッション横断の観測を作る
+  const hypothesisContext = buildHypothesisContext(session, stats, ordered);
+
+  /** 候補へ観測事実・優先理由・反証・未測定・反証可能な仮説を付ける。 */
+  const structure = (finding: RuleFinding, rank: number): LocalCoachFinding => {
+    const hypotheses = buildHypotheses(
+      finding.id,
+      finding.primaryMetric ?? finding.evidence[0]?.metric ?? "対象指標",
+      hypothesisContext
+    );
+    const base = trimEvidence(finding);
+    return {
+      ...base,
+      rank,
+      observedFacts: toObservedFacts(finding),
+      personalBaseline: finding.personalBaseline,
+      priorityReason: priorityReasonOf(finding, rank),
+      counterEvidence: counterEvidenceOf(finding, hypothesisContext),
+      unmeasured: unmeasuredOf(finding, hypothesisContext),
+      // 同じデータから区別できない仮説は順位を断定せず併記する
+      hypotheses: areIndistinguishable(hypotheses)
+        ? hypotheses.map((h, index) =>
+            index === 0
+              ? {
+                  ...h,
+                  contradicting: [
+                    ...h.contradicting,
+                    "今回のデータではもう一方の候補と区別できません。順位は断定しません。",
+                  ],
+                }
+              : h
+          )
+        : hypotheses,
+    };
+  };
+
+  // 全候補を保持する（上位2件に入らなかったという理由だけで存在が消えないように）
+  const allCandidates: UnrankedCandidate[] = issues.map((finding, index) =>
+    toUnranked(
+      finding,
+      index + 1,
+      index < MAX_ISSUE_FINDINGS
+        ? "表示対象"
+        : `表示上限${MAX_ISSUE_FINDINGS}件を超えたため詳細は非表示`
+    )
+  );
+  const unrankedCandidates = allCandidates.slice(MAX_ISSUE_FINDINGS);
 
   const issueFindings = issues
     .slice(0, MAX_ISSUE_FINDINGS)
-    .map((f) => trimEvidence(f));
+    .map((finding, index) => structure(finding, index + 1));
   const positiveFinding = positives
     .slice(0, MAX_POSITIVE_FINDINGS)
     .map((f) => trimEvidence(f))[0];
+  // 課題が0件のときに示す「今回確認できた安定範囲」
+  const stableRange =
+    issueFindings.length === 0
+      ? buildStableRange(stats, positives, hypothesisContext)
+      : undefined;
   // 推奨メニューは最優先の課題1件にだけ対応させる
   const recommendedAction = buildAction(issueFindings[0]);
 
@@ -436,6 +723,11 @@ export function analyzeLocalCoach(
       `グルーピングの有効セット数が${grouping.validSetCount}セットで、最低${MIN_GROUPING_SETS}セットに達していません。`
     );
   }
+  if (noisyIssues.length > 0) {
+    unavailableReasons.push(
+      `差の95%区間が0を含む観測が${noisyIssues.length}件あり、向きが確定しないため候補から除外しました。`
+    );
+  }
   if (issueFindings.length === 0) {
     unavailableReasons.push(
       "判定基準を超える課題傾向は検出されませんでした(基準未満の差は傾向として扱いません)。"
@@ -449,6 +741,40 @@ export function analyzeLocalCoach(
     positiveFinding,
     issueFindings,
     recommendedAction,
+    allCandidates,
+    unrankedCandidates,
+    stableRange,
     unavailableReasons,
   };
+}
+
+/**
+ * 課題が0件だった場合に示す「今回確認できた安定範囲」。
+ * 問題を作らない代わりに、何が安定していたのかと、
+ * 何を一般化できないのかを具体的な数値で残す。
+ */
+function buildStableRange(
+  stats: SessionStatistics,
+  positives: readonly RuleFinding[],
+  ctx: HypothesisContext
+): string[] {
+  const out: string[] = [];
+  const hitRate = stats.scorableExactHitRate ?? stats.exactHitRate;
+  const hitSamples = stats.scorableThrows ?? stats.completedThrows;
+  if (hitRate != null && hitSamples > 0) {
+    out.push(
+      `完全命中率 ${(hitRate * 100).toFixed(1)}%(分母${hitSamples}) が投順・前後半で判定基準を超えて変化していません`
+    );
+  }
+  if (ctx.coordinateCount >= MIN_ANALYZABLE_SAMPLE) {
+    const error = stats.coordinateError.averageErrorDistance;
+    if (error != null) {
+      out.push(
+        `平均誤差距離 ${error.toFixed(3)}(詳細座標${stats.coordinateError.sampleCount}投) の区間差が判定基準未満です`
+      );
+    }
+  }
+  const best = positives[0];
+  if (best) out.push(best.summary);
+  return out.slice(0, 3);
 }

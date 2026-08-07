@@ -4,10 +4,15 @@ import { STEEL_BOARD } from "../config/boardProfiles";
 import { MAX_EMBEDDED_MARKDOWN_CHARS } from "../config/constants";
 import { landingFromCoordinate } from "../domain/landing";
 import { calculateStatistics } from "../domain/stats";
-import { MAX_LOCAL_COACH_SECTION_CHARS, ENGINE_VERSION } from "../domain/localCoach/config";
+import {
+  ENGINE_VERSION,
+  MAX_INSUFFICIENT_SECTION_CHARS,
+  MAX_LOCAL_COACH_SECTION_CHARS,
+} from "../domain/localCoach/config";
 import { buildThrows, fixtureSession, T20 } from "../test/fixtures";
 import type { FixtureThrowSpec } from "../test/fixtures";
 import type { SessionStatistics, TrainingSession } from "../types/models";
+import { analyzeLocalCoach } from "../domain/localCoach/analyzeLocalCoach";
 import { buildSessionCsv } from "./csv";
 import {
   ANALYSIS_INSTRUCTIONS,
@@ -105,22 +110,29 @@ describe("AI依頼文へのローカルコーチ分析の埋め込み", () => {
 
   it("生成AIではない旨とエンジンバージョンが表示される", () => {
     const section = localCoachSection(markdownOf(rich, true));
-    expect(section).toContain("この分析は、アプリ内の決定ルールと統計計算による事前評価です。");
-    expect(section).toContain("生成AIによる回答ではありません。");
-    expect(section).toContain(`- 分析エンジン: ${ENGINE_VERSION}`);
-    expect(ENGINE_VERSION).toBe("local-coach-v2.0");
+    expect(section).toContain(
+      "アプリ内の決定ルールと統計計算による事前評価です。生成AIの回答でも最終結論でもありません。"
+    );
+    expect(section).toContain(`エンジン: ${ENGINE_VERSION}`);
+    expect(ENGINE_VERSION).toBe("local-coach-v3.0");
   });
 
   it("外部AIへ独立検証を要求する指示が含まれる", () => {
     const md = markdownOf(rich, true);
     expect(md).toContain(LOCAL_COACH_HANDLING_INSTRUCTIONS);
+    // 統計値・全投擲データはローカルコーチ節より「前」に出力されるため、
+    // 「後続の」ではなく「この依頼文に含まれる」と表現していること
+    expect(md).toContain("ローカル所見を最終結論として採用しない");
     expect(md).toContain(
-      "ローカルコーチの結論を無条件に採用せず、後続の統計値と全投擲データから独立して検証してください。"
+      "この依頼文に含まれる統計値と全投擲データ(または添付CSV)から、あなた自身で上位の傾向を独立に作る。"
     );
+    // 統計値はローカルコーチ節より「前」に出力されるため「後続の」とは書かない
+    expect(md).not.toContain("後続の統計値");
     expect(md).toContain(
-      "一致しない場合は、ローカルコーチ分析のどの判定または前提に問題があるかを明示してください。"
+      "一致した候補・一致しなかった候補・ローカルが検出していない候補を明示する。"
     );
-    expect(md).toContain("ローカルコーチが検出していない重要な傾向も探索してください。");
+    expect(md).toContain("観測事実と原因仮説を分けて書く。");
+    expect(md).toContain("ローカルの順位に引きずられない");
   });
 
   it("embedAllThrows=true と false の両方で同じローカルコーチ分析が出力される", () => {
@@ -224,25 +236,80 @@ describe("AI依頼文へのローカルコーチ分析の埋め込み", () => {
   });
 });
 
+describe("v3 Markdown 要件", () => {
+  it("未掲載の検出候補を短い補助情報として出す（存在を隠さない）", () => {
+    // 複合的な問題があるセッションでは検出候補が3件以上になる
+    const data = scenario(20);
+    const report = analyzeLocalCoach({
+      session: data.session,
+      stats: data.stats,
+      throws: data.throws,
+    });
+    if (report.allCandidates.length <= 1) return; // 候補が1件なら対象外
+    const section = localCoachSection(markdownOf(data, true));
+    expect(section).toContain("未掲載の検出候補");
+    // 未掲載候補は1行の短い形式（優先度と確からしさのみ）
+    const lines = section
+      .split("\n")
+      .filter((line) => /^- .+（優先度\d+位・確からしさ[高中低]）$/.test(line));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      // 詳細（根拠の数値・仮説・実験）は含めない
+      expect(line).not.toContain("分母");
+      expect(line).not.toContain("仮説");
+      expect(line.length).toBeLessThan(120);
+    }
+  });
+
+  it("強い断定表現を使わない（候補・可能性として提示する）", () => {
+    const section = localCoachSection(markdownOf(scenario(20), true));
+    // 断定的な見出し・言い回しを使わない
+    for (const phrase of [
+      "最優先の課題",
+      "原因は",
+      "が原因です",
+      "断定できます",
+      "確実に",
+      "必ず改善します",
+    ]) {
+      expect(section, phrase).not.toContain(phrase);
+    }
+    // 順位がローカルルール上のものであることを明示する
+    expect(section).toContain("ローカルルール上の優先候補");
+    // 原因候補は未検証であることを明示する
+    expect(section).toContain("原因候補(未検証。次回の実験で確認する)");
+  });
+
+  it("undefined・NaN・Infinity を出力しない", () => {
+    for (const setCount of [2, 3, 20, 40]) {
+      const section = localCoachSection(markdownOf(scenario(setCount), true));
+      expect(section, `setCount=${setCount}`).not.toContain("undefined");
+      expect(section, `setCount=${setCount}`).not.toContain("NaN");
+      expect(section, `setCount=${setCount}`).not.toContain("Infinity");
+    }
+  });
+});
+
 describe("データ不足時のローカルコーチ表示", () => {
   const scarce = scenario(2); // 6投
 
   it("架空の分析を生成せず、分析不能として理由を示す", () => {
     const section = localCoachSection(markdownOf(scarce, true));
-    expect(section).toContain("- 分析可能性: 不足");
-    expect(section).toContain("### 分析結果");
-    expect(section).toContain("主要な傾向は判定できません。");
-    expect(section).toContain("理由:");
+    expect(section).toContain("分析可能性: 不足");
+    expect(section).toContain("判定できない項目と理由:");
     expect(section).toContain("完了投擲数が最低分析数10投を下回っています");
-    expect(section).toContain(
-      "比較可能な過去セッションがないため、本人平均との差は分析できません。"
-    );
-    expect(section).toContain(
-      "今回はフォームや技術上の結論を出さず、記録の継続を推奨します。"
-    );
-    // 課題・推奨メニューは出さない
-    expect(section).not.toContain("### 最優先の課題");
-    expect(section).not.toContain("### 次回の推奨メニュー");
+    // 次回に必要な投擲数と入力精度を示す
+    expect(section).toContain("次回の必要条件");
+    expect(section).toContain("最低30投");
+    expect(section).toContain("詳細座標入力が必要");
+    // 分析不能時は仮説・実験・定型の身体原因リストを出さない
+    expect(section).toContain("今回は原因仮説・練習メニューを生成しません");
+    expect(section).not.toContain("優先候補");
+    expect(section).not.toContain("1変数実験");
+    expect(section).not.toContain("仮説1");
+    expect(section).not.toContain("グリップ圧の変化");
+    // 通常ケースより短いこと
+    expect(section.length).toBeLessThanOrEqual(MAX_INSUFFICIENT_SECTION_CHARS);
   });
 
   it("分析不能でも外部AIへの独立検証指示は維持される", () => {
@@ -266,6 +333,8 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
         scopes: [],
       },
       analyzable: true,
+      allCandidates: [],
+      unrankedCandidates: [],
       issueFindings: [
         {
           id: "x",
@@ -288,10 +357,12 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
 
   it("良かった点・課題・推奨メニューの見出しが上限件数どおりに並ぶ", () => {
     const section = localCoachSection(markdownOf(scenario(20), true));
-    expect(section.split("### 良かった点").length - 1).toBeLessThanOrEqual(1);
-    expect(section.split("### 最優先の課題").length - 1).toBeLessThanOrEqual(1);
-    expect(section.split("### 次に優先する課題").length - 1).toBeLessThanOrEqual(1);
-    expect(section.split("### 次回の推奨メニュー").length - 1).toBeLessThanOrEqual(1);
+    expect(section.split("### ローカルルール上の優先候補1").length - 1).toBe(1);
+    expect(section.split("### ローカルルール上の優先候補2").length - 1).toBeLessThanOrEqual(1);
+    expect(section.split("### 次回の1変数実験").length - 1).toBeLessThanOrEqual(1);
+    // 強い断定に見える旧見出しは使わない
+    expect(section).not.toContain("### 最優先の課題");
+    expect(section).not.toContain("### 次に優先する課題");
   });
 
   it("相対差の根拠行は、指標名の直後に実測値を置く（%を指標値と読み違えない）", () => {
@@ -308,6 +379,8 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
         scopes: [],
       },
       analyzable: true,
+      allCandidates: [],
+      unrankedCandidates: [],
       issueFindings: [
         {
           id: "x",
@@ -352,6 +425,8 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
         scopes: [],
       },
       analyzable: true,
+      allCandidates: [],
+      unrankedCandidates: [],
       issueFindings: [
         {
           id: "x",
@@ -380,23 +455,31 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
       "- 3投目の命中率: 50.0% / 分母100 / 95%区間 40.4%〜59.6%"
     );
     // 区間の読み方を1行で説明し、「有意」とは述べない
-    expect(section).toContain("95%区間」は推定のぶれ幅の目安です");
+    expect(section).toContain("95%区間はぶれ幅の目安です");
     expect(section).not.toContain("有意差");
     expect(section).not.toContain("統計的に有意");
   });
 
   it("推奨メニューに目的・実施方法・投擲数・意識すること・記録項目・成功判定が含まれる", () => {
     const section = localCoachSection(markdownOf(scenario(20), true));
+    // v3: 1変数実験としての必須要素
     for (const label of [
+      "### 次回の1変数実験",
       "目的:",
-      "実施方法:",
-      "意識すること:",
-      "意識してはいけないこと:",
-      "記録する項目:",
-      "成功判定:",
+      "変える要因(これ以外は変えない):",
+      "実施順:",
+      "主要指標:",
+      "記録:",
+      "悪化させない指標:",
+      "成功:",
+      "仮説の否定:",
+      "中止・変更:",
+      "次の分岐:",
     ]) {
       expect(section, label).toContain(label);
     }
-    expect(section).toMatch(/合計\d+投/);
+    // 対照条件と介入条件がそれぞれ投擲数付きで示される
+    expect(section).toMatch(/A: .+\(\d+投\)/);
+    expect(section).toMatch(/B: .+\(\d+投\)/);
   });
 });

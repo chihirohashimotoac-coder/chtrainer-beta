@@ -9,6 +9,11 @@
  *  - 成功判定は、その課題の判定に使った指標と同じ指標で書く。
  */
 import { MAX_SUCCESS_CRITERIA } from "./config";
+import {
+  EXPERIMENT_DESIGNS,
+  isValidDesign,
+  reproductionDesign,
+} from "./experiments";
 import type { LocalCoachAction, LocalCoachFinding } from "./types";
 
 /** 全メニュー共通の「意識してはいけないこと」。フォーム同時変更の禁止。 */
@@ -624,8 +629,27 @@ export function buildAction(
   const template = TEMPLATES[finding.actionTemplateId];
   if (!template) return undefined;
   const action = template(finding);
+  // 1変数実験としての構造（対照条件・介入条件・否定基準・次の分岐）を重ねる。
+  // 専用設計がないテンプレートは、断定を避けて再現確認の設計へ落とす。
+  const metric = primaryMetric(finding);
+  const candidate = EXPERIMENT_DESIGNS[finding.actionTemplateId];
+  const design =
+    candidate != null && isValidDesign(candidate)
+      ? candidate
+      : reproductionDesign(metric);
   return {
     ...action,
     successCriteria: action.successCriteria.slice(0, MAX_SUCCESS_CRITERIA),
+    hypothesisIds: design.hypothesisIds,
+    changedFactor: design.changedFactor,
+    control: design.control,
+    intervention: design.intervention,
+    blockOrder: design.blockOrder,
+    primaryMetric: metric,
+    guardrailMetrics: design.guardrailMetrics,
+    falsificationCriteria: design.falsificationCriteria,
+    nextBranch: design.nextBranch,
+    // 条件ごとの分母を満たす合計投擲数へ揃える
+    throwCount: design.control.throwCount + design.intervention.throwCount,
   };
 }

@@ -5,3 +5,4 @@ coverage
 .DS_Store
 *.tsbuildinfo
 qa-screenshots
+ab-eval

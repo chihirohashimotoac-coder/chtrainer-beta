@@ -361,16 +361,18 @@ export function detectDartOrderChange(ctx: RuleContext): RuleFinding[] {
           title: `${order}投目で${axis.label}のばらつきが大きくなっています`,
           summary: `${order}投目の${axis.label}ばらつき(誤差${axis.key.toUpperCase()}の標準偏差)が、他の投順の平均より大きい状態です。`,
           confidenceInput: confidenceInputOf(ctx, target.samples, 1, supported),
+          // 文字数上限で末尾が切れても主題の数値が残るよう、
+          // 対象投順の実測値と比較結果を先頭に置く。
           evidence: [
-            ...DART_ORDERS.map((o) => ({
-              metric: `${o}投目の${axis.label}ばらつき(標準偏差)`,
-              current: spread.get(o)!.sd,
-              sampleSize: spread.get(o)!.samples,
+            {
+              metric: `${order}投目の${axis.label}ばらつき(標準偏差)`,
+              current: target.sd,
+              sampleSize: target.samples,
               unit: "normalized" as const,
               note: scopeNote(ctx, "詳細座標のみ"),
-            })),
+            },
             {
-              metric: `${order}投目と他の投順平均との相対差`,
+              metric: "他の投順平均との相対差",
               current: target.sd,
               baseline: othersMean,
               difference: diff,
@@ -380,6 +382,13 @@ export function detectDartOrderChange(ctx: RuleContext): RuleFinding[] {
                 ? "95%区間は同等(比1.0)を含まない"
                 : "95%区間は同等(比1.0)を含む",
             },
+            ...DART_ORDERS.filter((o) => o !== order).map((o) => ({
+              metric: `${o}投目の${axis.label}ばらつき(標準偏差)`,
+              current: spread.get(o)!.sd,
+              sampleSize: spread.get(o)!.samples,
+              unit: "normalized" as const,
+              note: scopeNote(ctx, "詳細座標のみ"),
+            })),
           ],
           limitations: [
             "詳細座標が記録された投擲のみを対象にしています。",
@@ -437,8 +446,30 @@ export function detectDartOrderChange(ctx: RuleContext): RuleFinding[] {
           title: `${order}投目の命中率が他の投順より低い状態です`,
           summary: `${order}投目の命中率が、他の投順をまとめた命中率を下回っています。`,
           confidenceInput: confidenceInputOf(ctx, target.samples, 1, supported),
+          // 主題の投順を先頭に置き、切り詰めでも実測値が残るようにする
           evidence: [
-            ...DART_ORDERS.map((o) => ({
+            {
+              metric: `${order}投目の命中率`,
+              current: target.rate,
+              sampleSize: target.samples,
+              unit: "rate" as const,
+              interval: wilsonInterval(
+                target.hits,
+                target.samples,
+                CONFIDENCE_INTERVAL_Z
+              ),
+              note: scopeNote(ctx),
+            },
+            {
+              metric: "他の投順まとめとの差",
+              current: target.rate,
+              baseline: othersRate,
+              difference: diff,
+              sampleSize: target.samples,
+              unit: "rate" as const,
+              interval: diffInterval,
+            },
+            ...DART_ORDERS.filter((o) => o !== order).map((o) => ({
               metric: `${o}投目の命中率`,
               current: hitRates.get(o)!.rate,
               sampleSize: hitRates.get(o)!.samples,
@@ -450,15 +481,6 @@ export function detectDartOrderChange(ctx: RuleContext): RuleFinding[] {
               ),
               note: scopeNote(ctx),
             })),
-            {
-              metric: `${order}投目と他の投順まとめとの差`,
-              current: target.rate,
-              baseline: othersRate,
-              difference: diff,
-              sampleSize: target.samples,
-              unit: "rate" as const,
-              interval: diffInterval,
-            },
           ],
           limitations: [
             "命中判定対象の投擲のみを分母にしています。",
@@ -1564,7 +1586,9 @@ export function detectLongTermTrend(ctx: RuleContext): RuleFinding[] {
           priority: better ? 8 : 74,
           effect: normalizedEffect(span, EFFECT_SCALE_RATE),
           primaryMetric: "命中率のセッション間推移",
-          subject: "trend_hit_rate",
+          // 水準の逸脱(baseline)と方向の継続(trend)は同じ主題の別視点。
+          // 主題を揃えることで、重複表示せず互いの裏付けとして数える。
+          subject: "baseline_hit_rate",
           title: better
             ? `命中率が${hitSeries.length}セッション連続で上がっています`
             : `命中率が${hitSeries.length}セッション連続で下がっています`,
@@ -1617,7 +1641,8 @@ export function detectLongTermTrend(ctx: RuleContext): RuleFinding[] {
           priority: better ? 9 : 76,
           effect: normalizedEffect(span, EFFECT_SCALE_RELATIVE),
           primaryMetric: "平均誤差距離のセッション間推移",
-          subject: "trend_error_distance",
+          // 水準の逸脱と方向の継続は同じ主題の別視点として扱う
+          subject: "baseline_error_distance",
           title: better
             ? `平均誤差距離が${errorSeries.length}セッション連続で小さくなっています`
             : `平均誤差距離が${errorSeries.length}セッション連続で大きくなっています`,
