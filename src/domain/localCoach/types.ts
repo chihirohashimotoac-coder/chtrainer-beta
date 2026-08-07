@@ -59,6 +59,123 @@ export interface LocalCoachEvidence {
  */
 export type LocalCoachUnit = "normalized" | "rate" | "count" | "ratio";
 
+// ---------------------------------------------------------------------------
+// v3: 観測事実 / 個人基準 / 反証可能な仮説 / 1変数実験
+// ---------------------------------------------------------------------------
+
+/** 事実の元になった入力精度。混在を同一母集団として扱わないために持つ。 */
+export type FactPrecision =
+  /** 詳細座標のみで算出 */
+  | "coordinate"
+  /** 簡易入力(セグメント代表点)のみで算出。mm換算・SDの絶対値は扱わない */
+  | "approximate"
+  /** 入力精度に依存しない指標(件数・率など) */
+  | "precision_independent";
+
+/**
+ * 観測事実。「何が観測されたか」だけを持ち、原因は一切含めない。
+ * 原因候補は CoachHypothesis 側にのみ置き、同じフィールドへ混ぜない。
+ */
+export interface ObservedFact {
+  metric: string;
+  value?: number;
+  /** 比較相手の名前（例: 「他の投順をまとめた値」） */
+  comparisonLabel?: string;
+  comparisonValue?: number;
+  /** value - comparisonValue、または相対差 */
+  difference?: number;
+  unit?: LocalCoachUnit;
+  /** この事実の分母。0 は 0% ではなく N/A として表示する。 */
+  sampleSize: number;
+  precision: FactPrecision;
+  interval?: { low: number; high: number };
+  note?: string;
+}
+
+/**
+ * 個人基準。比較可能な過去履歴からのみ作る。
+ * 履歴が足りない場合は捏造せず unavailable とする。
+ */
+export interface PersonalBaseline {
+  metric: string;
+  currentValue?: number;
+  /** 比較条件を満たした過去セッション数 */
+  sessionCount: number;
+  /** 頑健な代表値（中央値）。外れ値1回で基準が動かないようにする。 */
+  median?: number;
+  /** 過去の変動幅（最小〜最大） */
+  range?: { low: number; high: number };
+  /** 今回と中央値の相対差 */
+  differenceFromMedian?: number;
+  /**
+   * 今回の値の位置づけ。
+   *  within_variation   : 過去の変動幅の内側（通常のばらつきの範囲）
+   *  single_deviation   : 変動幅の外だが、方向が継続していない（単発変動）
+   *  continuing_trend   : 変動幅の外で、方向が連続している（継続傾向）
+   *  unavailable        : 履歴不足で判定しない
+   */
+  pattern:
+    | "within_variation"
+    | "single_deviation"
+    | "continuing_trend"
+    | "unavailable";
+  /** 基準を算出したルールエンジンの版数（版が違う基準を無言で混ぜない） */
+  engineVersion: string;
+  /** unavailable のときの理由 */
+  unavailableReason?: string;
+}
+
+/**
+ * 反証可能な原因仮説。断定ではなく「次回どうなれば支持され、
+ * どうなれば否定されるか」まで持つ候補として扱う。
+ */
+export interface CoachHypothesis {
+  id: string;
+  /** 短い見出し（例: 「投順そのものに依存」） */
+  label: string;
+  /** 候補としての言い回し。断定形にしない。 */
+  statement: string;
+  /** この仮説と整合する観測値 */
+  supporting: string[];
+  /** この仮説と矛盾する観測値。無い場合は「現時点で矛盾する観測なし」を入れる。 */
+  contradicting: string[];
+  /** 現在不足しているデータ */
+  missingData: string[];
+  /** 仮説が正しければ次回どうなるか */
+  ifTrue: string;
+  /** 仮説が誤りなら次回どうなるか */
+  ifFalse: string;
+  /** 他の仮説と区別する方法（同じ内容なら今回のデータでは区別不能） */
+  distinguishedBy: string;
+  /**
+   * 身体・心理・医学に関わる要因を含む場合の扱い。
+   * 着弾データだけでは断定できないため、必ず外部確認手段を指定する。
+   */
+  requiresExternalCheck?: string;
+}
+
+/** 実験の1条件。 */
+export interface ExperimentCondition {
+  label: string;
+  description: string;
+  /** この条件の投擲数。最小サンプル基準を満たすこと。 */
+  throwCount: number;
+}
+
+/** 上位2件に入らなかった検出候補（存在自体は必ず外部AIへ伝える）。 */
+export interface UnrankedCandidate {
+  id: string;
+  subject?: string;
+  /** 全候補内での順位（1始まり） */
+  rank: number;
+  title: string;
+  confidence: LocalCoachConfidence;
+  effect: number;
+  severity: number;
+  /** 表示しなかった理由 */
+  hiddenReason: string;
+}
+
 /** 単一の所見。 */
 export interface LocalCoachFinding {
   /** ルール識別子（例: "dart_order_lateral_spread"）。エンジン内で一意。 */
@@ -92,11 +209,32 @@ export interface LocalCoachFinding {
   subject?: string;
   /** この所見で言えないこと・注意点 */
   limitations: string[];
-  /** 対応する推奨メニューのテンプレート識別子（課題所見のみ） */
+  /** 対応する実験テンプレートの識別子（課題所見のみ） */
   actionTemplateId?: string;
+
+  // --- v3: 構造化フィールド ---
+  /** 観測事実（原因を含まない）。evidence の構造化版。 */
+  observedFacts?: ObservedFact[];
+  /** 本人の過去履歴に基づく基準。履歴不足なら pattern="unavailable"。 */
+  personalBaseline?: PersonalBaseline;
+  /** なぜこの候補を優先したか（効果量・裏付け指標数・継続性） */
+  priorityReason?: string;
+  /** この所見と矛盾する、または反証となる観測 */
+  counterEvidence?: string[];
+  /** この所見について現在測定できていない事項 */
+  unmeasured?: string[];
+  /** 反証可能な原因仮説（最大2件）。観測事実とは別フィールドに保つ。 */
+  hypotheses?: CoachHypothesis[];
+  /** 全候補内での順位（1始まり） */
+  rank?: number;
 }
 
 /** 推奨練習メニュー。検出した課題と1対1で対応させる。 */
+/**
+ * 1変数実験計画。一般的な練習アドバイスではなく、
+ * 複数の原因仮説を区別するための対照実験として構成する。
+ * 既存フィールド（purpose/method/throwCount/focus/avoid/…）は互換のため維持する。
+ */
 export interface LocalCoachAction {
   id: string;
   /** 対応する課題所見の id。成功判定はこの課題の指標で書く。 */
@@ -111,6 +249,26 @@ export interface LocalCoachAction {
   recordItems: string[];
   successCriteria: string[];
   stopOrChangeCriteria: string[];
+
+  // --- v3: 1変数実験としての構造 ---
+  /** 区別しようとしている仮説の id */
+  hypothesisIds?: string[];
+  /** 条件間で変更する唯一の要因 */
+  changedFactor?: string;
+  /** 対照条件（いつも通り） */
+  control?: ExperimentCondition;
+  /** 介入条件（変更する要因だけを変える） */
+  intervention?: ExperimentCondition;
+  /** ブロック順・交互実施の指定 */
+  blockOrder?: string;
+  /** 所見に対応する主要評価指標 */
+  primaryMetric?: string;
+  /** 主要指標を追う代わりに悪化させてはいけない指標 */
+  guardrailMetrics?: string[];
+  /** 仮説を否定する基準 */
+  falsificationCriteria?: string[];
+  /** 結果に応じた次の分岐 */
+  nextBranch?: string;
 }
 
 /** 比較対象として採用した過去セッションの要約（根拠の追跡用）。 */
@@ -147,8 +305,18 @@ export interface LocalCoachReport {
   positiveFinding?: LocalCoachFinding;
   /** 優先課題（最大2件） */
   issueFindings: LocalCoachFinding[];
-  /** 推奨メニュー（最大1件） */
+  /** 推奨メニュー（最大1件）。v3では1変数実験計画。 */
   recommendedAction?: LocalCoachAction;
+  /**
+   * 検出したすべての課題候補（表示件数で切り捨てる前）。
+   * 上位2件に入らなかったという理由だけで候補の存在が消えないよう、
+   * 内部で保持して検査・出力できるようにする。
+   */
+  allCandidates: UnrankedCandidate[];
+  /** 上位2件に入らなかった候補（短い補助情報として出力する） */
+  unrankedCandidates: UnrankedCandidate[];
+  /** 課題が0件だった場合に示す、今回確認できた安定範囲 */
+  stableRange?: string[];
   /** 分析できなかった理由（データ不足・未測定） */
   unavailableReasons: string[];
 }

@@ -112,8 +112,8 @@ describe("ベータ版の保存領域分離", () => {
 });
 
 describe("ベータ版のバージョンと識別表示", () => {
-  it("バージョンが 2.7.0-beta.2 で、package.json と一致する", () => {
-    expect(APP_VERSION).toBe("2.7.0-beta.2");
+  it("バージョンが 2.7.0-beta.3 で、package.json と一致する", () => {
+    expect(APP_VERSION).toBe("2.7.0-beta.3");
     expect(pkg.version).toBe(APP_VERSION);
     expect(pkg.name).toBe("darts-training-analyzer-beta");
   });
