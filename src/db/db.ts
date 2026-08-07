@@ -27,7 +27,20 @@ function normalizeSession(session: TrainingSession): TrainingSession {
   if (normalized === session.scoringStyle) return session;
   return { ...session, scoringStyle: normalized };
 }
-const DB_NAME = "darts-training-analyzer";
+/**
+ * IndexedDBのデータベース名。
+ *
+ * ベータ版は本番版と同一オリジン(github.io)配下で公開されるため、パスが違う
+ * だけではブラウザの保存領域が分離されない。本番版が使うDB名(末尾に -beta が
+ * 付かない名前)は絶対に開かず、この -beta 付きの名前だけを使うことで、
+ * 同じブラウザで本番版とベータ版を同時に利用してもデータが混ざらないようにする。
+ * 本番版の識別子をここへ書き写すと分離の保証が崩れるため、コメントにも含めない
+ * (src/beta/betaIsolation.test.ts が機械的に検査する)。
+ *
+ * 本番データをベータ版で使いたい場合は、本番版のJSONバックアップを書き出し、
+ * ベータ版の復元機能から取り込む(自動コピー・自動移行は行わない)。
+ */
+const DB_NAME = "darts-training-analyzer-beta";
 
 interface DtaDb extends DBSchema {
   settings: { key: string; value: AppSettings };

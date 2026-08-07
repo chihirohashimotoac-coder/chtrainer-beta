@@ -1,6 +1,7 @@
 """PR環境で主要画面を実操作し、レスポンシブスクリーンショットを保存する。"""
 
 import json
+import os
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -8,13 +9,16 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = "http://127.0.0.1:4173"
 OUTPUT = Path("qa-screenshots")
+# Playwright が同梱ブラウザを見つけられない環境（ブラウザだけ別途用意されている等）
+# 向けの脱出口。未設定なら従来どおり Playwright 管理のブラウザを使う。
+CHROMIUM_PATH = os.environ.get("PW_CHROMIUM_PATH") or None
 
 
 def seed_completed_session(page) -> None:
     page.evaluate(
         """
         async () => {
-          const open = indexedDB.open("darts-training-analyzer");
+          const open = indexedDB.open("darts-training-analyzer-beta");
           const db = await new Promise((resolve, reject) => {
             open.onsuccess = () => resolve(open.result);
             open.onerror = () => reject(open.error);
@@ -92,7 +96,7 @@ def seed_active_session(page) -> None:
     page.evaluate(
         """
         async () => {
-          const open = indexedDB.open("darts-training-analyzer");
+          const open = indexedDB.open("darts-training-analyzer-beta");
           const db = await new Promise((resolve, reject) => { open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error); });
           const t20 = { id: "qa-active-t20", label: "T20", type: "exact_segment", number: 20, ring: "triple", evaluationKind: "cricket_marks", representativePoint: { x: 0, y: 0.6 } };
           const t19 = { ...t20, id: "qa-active-t19", label: "T19", number: 19 };
@@ -139,15 +143,21 @@ def main() -> None:
     OUTPUT.mkdir(exist_ok=True)
     report = {}
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = (
+            playwright.chromium.launch(executable_path=CHROMIUM_PATH)
+            if CHROMIUM_PATH
+            else playwright.chromium.launch()
+        )
         page = browser.new_page(viewport={"width": 375, "height": 900}, device_scale_factor=1)
         page.goto(BASE_URL, wait_until="networkidle")
         seed_completed_session(page)
         page.reload(wait_until="networkidle")
 
-        for width in [320, 375, 430, 768, 1024, 1440]:
+        for width in [320, 360, 375, 390, 430, 768, 1024, 1440]:
             page.set_viewport_size({"width": width, "height": 900})
             page.goto(f"{BASE_URL}/#/", wait_until="networkidle")
+            # ベータ版バッジが表示され、狭幅でも見出しを崩さないこと
+            assert page.locator(".home-hero .badge.beta").count() == 1
             capture(page, f"home-{width}", report)
 
         page.set_viewport_size({"width": 1024, "height": 900})
@@ -190,6 +200,14 @@ def main() -> None:
         page.get_by_text("N/A：").wait_for()
         capture(page, "throw-history-1024", report)
 
+        for width in [320, 360, 390, 430]:
+            page.set_viewport_size({"width": width, "height": 900})
+            page.goto(f"{BASE_URL}/#/about", wait_until="networkidle")
+            page.get_by_text("ベータ版について").wait_for()
+            assert page.locator(".badge.beta").count() >= 1
+            capture(page, f"about-beta-{width}", report)
+
+        page.set_viewport_size({"width": 1024, "height": 900})
         page.goto(f"{BASE_URL}/#/session/qa-session/export", wait_until="networkidle")
         page.get_by_role("button", name="AIへ渡すテキストを生成").wait_for()
         capture(page, "ai-export-1024", report)

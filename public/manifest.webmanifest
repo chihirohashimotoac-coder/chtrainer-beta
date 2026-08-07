@@ -1,14 +1,15 @@
 {
-  "name": "CH Darts Training Analyzer",
-  "short_name": "CH DartsTA",
-  "description": "ダーツの投擲を記録し、AI分析用プロンプトを生成するトレーニング支援アプリ",
+  "id": "./",
+  "name": "CH Darts Training Analyzer β",
+  "short_name": "CH DartsTA β",
+  "description": "CH Darts Training Analyzerのベータ版。ローカルコーチ分析を試験搭載しています。",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0d2229",
-  "theme_color": "#12303b",
+  "theme_color": "#3c2a52",
   "icons": [
     {
       "src": "./icons/icon-192.png",

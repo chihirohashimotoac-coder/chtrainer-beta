@@ -18,6 +18,11 @@ import {
   type EffectivePatternMetadata,
 } from "./patternMetadata";
 import { compareStatistics } from "../domain/compare";
+import { analyzeLocalCoach } from "../domain/localCoach/analyzeLocalCoach";
+import {
+  LOCAL_COACH_HANDLING_INSTRUCTIONS,
+  buildLocalCoachMarkdown,
+} from "./localCoachMarkdown";
 import { getBoardProfile } from "../config/boardProfiles";
 import {
   RATING_SYSTEM_LABELS,
@@ -1199,6 +1204,25 @@ export function buildAnalysisMarkdown(input: MarkdownInput): string {
     out.push("このトレンドから、改善中/停滞/悪化している指標を特定し、時系列の傾向として分析してください。");
     out.push("");
   }
+  // ローカルコーチ事前分析。
+  // セッション概要・統計・比較データを生成したあと、データ利用上の注意と
+  // 出力フォーマット指定より前に置く。embedAllThrows の値に依存しないため、
+  // 全投擲埋め込み・CSV別添・ZIP同梱のいずれの経路でも同一内容が出力される。
+  // 結果は保存せず毎回再計算する(ルール更新後は過去セッションも最新ロジックで再分析される)。
+  out.push(
+    buildLocalCoachMarkdown(
+      analyzeLocalCoach({
+        session,
+        stats,
+        throws: input.throws,
+        comparisons: input.comparisons,
+        recentSessions: input.recentSessions,
+      })
+    )
+  );
+  out.push("");
+  out.push(LOCAL_COACH_HANDLING_INSTRUCTIONS);
+  out.push("");
   out.push("## 全投擲データ");
   out.push("");
   if (input.embedAllThrows) {

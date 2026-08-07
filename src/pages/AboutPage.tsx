@@ -1,22 +1,46 @@
-import { APP_NAME, APP_VERSION } from "../config/constants";
+import {
+  APP_CHANNEL,
+  APP_DISPLAY_NAME,
+  APP_VERSION,
+  BETA_NOTICE,
+} from "../config/constants";
 import { VERSION_HISTORY } from "../config/versionHistory";
+import { BetaBadge } from "../components/BetaBadge";
 import { t } from "../i18n/ja";
 
 export default function AboutPage() {
   const s = t();
   return (
     <div>
-      <h1>{s.about.title}</h1>
+      <div className="title-row">
+        <h1 style={{ margin: 0 }}>{s.about.title}</h1>
+        <BetaBadge />
+      </div>
       <div className="card">
         <div className="list-row">
           <span className="muted">{s.appName}</span>
-          <strong>{APP_NAME}</strong>
+          <strong>{APP_DISPLAY_NAME}</strong>
         </div>
+        {APP_CHANNEL === "beta" && (
+          <div className="list-row">
+            <span className="muted">{s.about.channel}</span>
+            <strong>{s.about.channelBeta}</strong>
+          </div>
+        )}
         <div className="list-row">
           <span className="muted">{s.about.version}</span>
           <strong>{APP_VERSION}</strong>
         </div>
       </div>
+      {APP_CHANNEL === "beta" && (
+        <div className="card">
+          <h2>{s.about.betaTitle}</h2>
+          {/* 保存領域が本番版と分離されていることを明示する。誤って本番版と
+              同じデータが入っていると誤認させないための必須表示。 */}
+          <p className="beta-notice">{BETA_NOTICE}</p>
+          <p className="muted small beta-notice">{s.about.betaStorageNote}</p>
+        </div>
+      )}
       <div className="card">
         <p>{s.about.disclaimer1}</p>
         <p>{s.about.disclaimer2}</p>

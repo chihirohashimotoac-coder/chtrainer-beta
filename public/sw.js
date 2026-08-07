@@ -10,7 +10,10 @@
 // (vite.config.ts の inject-sw-version プラグイン)。これにより新リリースごとに
 // sw.js の内容が変わり、Service Worker の更新検知(updatefound)と更新バナーが
 // 正しく発火する。dev では SW 未登録のためプレースホルダのままでも影響しない。
-const CACHE_VERSION = "dta-v__APP_VERSION__";
+// ベータ版は本番版と同一オリジン(github.io)で公開されるため、キャッシュ名を
+// 本番("dta-v...")と必ず別名にする。同名だと本番アプリのキャッシュを
+// activate 時の古いキャッシュ削除で消してしまう。
+const CACHE_VERSION = "dta-beta-v__APP_VERSION__";
 const APP_SHELL = [
   "./",
   "./index.html",

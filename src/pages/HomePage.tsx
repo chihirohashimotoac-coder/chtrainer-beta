@@ -8,6 +8,7 @@ import type { TrainingSession } from "../types/models";
 import { fmtDateTime, fmtRate } from "../utils/format";
 import { modeLabel } from "../export/markdown";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { BetaBadge } from "../components/BetaBadge";
 import { t } from "../i18n/ja";
 
 export default function HomePage() {
@@ -57,7 +58,10 @@ export default function HomePage() {
   return (
     <div className="home-page">
       <div className="home-hero">
-        <span className="eyebrow">PERFORMANCE ANALYTICS</span>
+        <div className="title-row">
+          <span className="eyebrow">PERFORMANCE ANALYTICS</span>
+          <BetaBadge />
+        </div>
         <h1>{s.appName}</h1>
         <p>1投ごとの事実を、次の改善判断へ。</p>
       </div>

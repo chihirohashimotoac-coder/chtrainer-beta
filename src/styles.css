@@ -686,6 +686,33 @@ table.stats tbody tr:nth-child(even) { background: var(--row-alt); }
   border-color: var(--danger);
 }
 
+/* ベータ版バッジ。テーマに依存しない固定色で、本番版との違いを常に同じ見た目で示す。
+   盤面SVG(BoardSVG.tsx)は独自配色のため影響しない。 */
+.badge.beta {
+  color: #f4e6ff;
+  background: #6b3fa0;
+  border-color: #a879e6;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* 見出し行のバッジ列。狭幅(320px)でも折り返して横スクロールを起こさない。 */
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* ベータ版の注意書き。改行を保ったまま折り返す。 */
+.beta-notice {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
 /* ---- v1.27 追加機能のUI ---- */
 .s-num { font-variant-numeric: tabular-nums; }
 

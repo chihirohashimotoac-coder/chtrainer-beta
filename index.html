@@ -6,21 +6,23 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#12303b" />
+    <!-- ベータ版はブラウザのテーマカラーを本番(#12303b)と変え、誤認を防ぐ。
+         盤面SVG・投擲画面の配色はテーマ非依存のため影響しない。 -->
+    <meta name="theme-color" content="#3c2a52" />
     <meta
       name="description"
-      content="ダーツの投擲を記録し、AI分析用プロンプトを生成するトレーニング支援PWA"
+      content="CH Darts Training Analyzerのベータ版。ローカルコーチ事前分析を試験搭載しています。"
     />
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <title>CH Darts Training Analyzer</title>
+    <title>CH Darts Training Analyzer β</title>
     <script>
       // 保存済みテーマを初回描画前に適用し、色のちらつき(FOUC)を防ぐ。
       // キーは src/theme/theme.ts の STORAGE_KEY と一致させること。
       (function () {
         try {
-          var t = localStorage.getItem("chtrainer-theme");
+          var t = localStorage.getItem("chtrainer-beta-theme");
           if (
             t &&
             ["slate", "cobalt", "bronze", "graphite", "hyperdrive"].indexOf(t) >= 0
