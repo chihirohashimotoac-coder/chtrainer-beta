@@ -19,12 +19,12 @@ describe("Service Worker のキャッシュ版数がリリースで更新され�
   };
 
   it("public/sw.js は __APP_VERSION__ プレースホルダでキャッシュ名を定義する", () => {
-    expect(sw).toMatch(/CACHE_VERSION\s*=\s*"dta-v__APP_VERSION__"/);
+    expect(sw).toMatch(/CACHE_VERSION\s*=\s*"dta-beta-v__APP_VERSION__"/);
   });
 
   it("public/sw.js にバージョン固定のキャッシュ名が残っていない", () => {
-    // 例: "dta-v1.25.0" のような固定値へ戻っていないこと
-    expect(sw).not.toMatch(/CACHE_VERSION\s*=\s*"dta-v\d/);
+    // 例: "dta-beta-v2.7.0-beta.1" のような固定値へ戻っていないこと
+    expect(sw).not.toMatch(/CACHE_VERSION\s*=\s*"dta-beta-v\d/);
   });
 
   it("APP_VERSION は package.json の version と一致する", () => {

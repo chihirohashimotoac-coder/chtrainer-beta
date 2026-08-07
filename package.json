@@ -1,9 +1,9 @@
 {
-  "name": "darts-training-analyzer",
+  "name": "darts-training-analyzer-beta",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.7.0-beta.1",
   "type": "module",
-  "description": "ダーツ投擲記録・AI分析プロンプト生成PWA",
+  "description": "ダーツ投擲記録・AI分析プロンプト生成PWA(ベータ版・ローカルコーチ事前分析を試験搭載)",
   "license": "MIT",
   "scripts": {
     "dev": "vite",

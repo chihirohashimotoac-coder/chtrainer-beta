@@ -40,7 +40,9 @@ export const THEME_PREVIEWS: readonly ThemePreview[] = [
   { id: "hyperdrive", dark: true, swatch: ["#07060d", "#0d0b1c", "#ff2d8f", "#16f0e0"] },
 ];
 
-const STORAGE_KEY = "chtrainer-theme";
+// ベータ版は本番版と同一オリジンのため、localStorage キーもベータ専用にする。
+// index.html の FOUC 防止スクリプトのキーと必ず一致させること。
+const STORAGE_KEY = "chtrainer-beta-theme";
 
 export function isThemeId(value: string | null | undefined): value is ThemeId {
   return value != null && (THEME_IDS as readonly string[]).includes(value);

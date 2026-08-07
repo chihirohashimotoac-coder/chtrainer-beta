@@ -1,7 +1,30 @@
 /** アプリ全体の上限・閾値を一元管理する定数 */
 
 export const APP_NAME = "CH Darts Training Analyzer";
-export const APP_VERSION = "2.6.0";
+export const APP_VERSION = "2.7.0-beta.1";
+
+/**
+ * 配布チャネル。"beta" のとき、UIへβバッジと注意書きを表示する。
+ * 本番版へ取り込む際はここを "stable" に戻すだけで表示が切り替わる。
+ */
+export const APP_CHANNEL: "stable" | "beta" = "beta";
+
+/** βバッジのラベル(アプリ名の隣に表示する短い識別子) */
+export const BETA_BADGE_LABEL = "BETA";
+
+/** 情報画面などで使うアプリ表示名(ベータ版は末尾にβを付ける) */
+export const APP_DISPLAY_NAME =
+  APP_CHANNEL === "beta" ? `${APP_NAME} β` : APP_NAME;
+
+/**
+ * ベータ版の注意書き。本番版と保存領域が分離されていること、
+ * 自動同期されないこと、バックアップを推奨することを明示する。
+ */
+export const BETA_NOTICE = [
+  "このアプリはベータ版です。",
+  "本番版とは別の保存領域を使用しており、記録データは自動同期されません。",
+  "重要な記録は定期的にJSONバックアップしてください。",
+].join("\n");
 
 /** セット数の制約 */
 export const MIN_SETS = 20;

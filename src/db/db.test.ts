@@ -10,11 +10,11 @@ import { fixtureSession } from "../test/fixtures";
 describe("IndexedDB schema upgrades", () => {
   it("v1から現行DBへの更新で派生統計を無効化する", async () => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.deleteDatabase("darts-training-analyzer");
+      const request = indexedDB.deleteDatabase("darts-training-analyzer-beta");
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-    const legacy = await openDB("darts-training-analyzer", 1, {
+    const legacy = await openDB("darts-training-analyzer-beta", 1, {
       upgrade(db) {
         db.createObjectStore("settings", { keyPath: "id" });
         db.createObjectStore("players", { keyPath: "id" });
