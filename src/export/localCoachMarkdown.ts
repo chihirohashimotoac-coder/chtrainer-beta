@@ -51,13 +51,28 @@ function formatValue(
   }
 }
 
+/**
+ * 推定の95%区間を短く表す。
+ * 「有意」とは述べず、推定がどれだけぶれ得るかの目安としてのみ示す。
+ */
+function formatInterval(
+  interval: LocalCoachEvidence["interval"],
+  unit: LocalCoachEvidence["unit"]
+): string | undefined {
+  if (!interval) return undefined;
+  const format = unit === "rate" ? "rate" : "normalized";
+  return `95%区間 ${formatValue(interval.low, format)}〜${formatValue(interval.high, format)}`;
+}
+
 /** 根拠1件を1行で表す。分母は必ず併記する（分母0はN/A扱い）。 */
 function evidenceLine(evidence: LocalCoachEvidence): string {
   const parts: string[] = [];
   if (evidence.unit === "ratio" && evidence.difference != null) {
-    parts.push(formatValue(evidence.difference, "ratio"));
+    // 先頭は必ず「その指標の実測値」にする。相対差を先に置くと、
+    // 指標名の直後の数値が指標の値だと読み違えられる。
+    parts.push(formatValue(evidence.current, "normalized"));
     parts.push(
-      `今回 ${formatValue(evidence.current, "normalized")} / 基準 ${formatValue(evidence.baseline, "normalized")}`
+      `基準比 ${formatValue(evidence.difference, "ratio")} (基準 ${formatValue(evidence.baseline, "normalized")})`
     );
   } else if (evidence.unit === "rate" && evidence.difference != null) {
     parts.push(formatValue(evidence.current, "rate"));
@@ -66,6 +81,8 @@ function evidenceLine(evidence: LocalCoachEvidence): string {
     parts.push(formatValue(evidence.current, evidence.unit));
   }
   parts.push(evidence.sampleSize > 0 ? `分母${evidence.sampleSize}` : `分母0(${NA})`);
+  const interval = formatInterval(evidence.interval, evidence.unit);
+  if (interval) parts.push(interval);
   if (evidence.note) parts.push(evidence.note);
   return `- ${evidence.metric}: ${parts.join(" / ")}`;
 }
@@ -141,6 +158,11 @@ function renderSection(report: LocalCoachReport, options: RenderOptions): string
       : "- 比較対象: なし(条件が一致する過去セッションなし)"
   );
   out.push(`- 分析可能性: ${report.analyzable ? "十分" : "不足"}`);
+  if (report.analyzable) {
+    out.push(
+      "- 根拠の「95%区間」は推定のぶれ幅の目安です。複数指標を同時に見ているため有意性の判定ではありません。"
+    );
+  }
   out.push("");
 
   if (!report.analyzable) {

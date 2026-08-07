@@ -37,6 +37,13 @@ export interface LocalCoachEvidence {
   difference?: number;
   /** この指標の分母（該当投擲数・有効セット数など） */
   sampleSize: number;
+  /**
+   * 推定の95%区間（[low, high]）。分母が小さいほど広くなる。
+   * 出力では「95%区間」とだけ示し、「有意」とは述べない
+   * （多数の指標を同時に見ているため、単独の区間で有意性は主張できない）。
+   * 区間を定義できない指標（件数など）では undefined。
+   */
+  interval?: { low: number; high: number };
   /** 値の単位・表示形式 */
   unit?: LocalCoachUnit;
   /** 補足（入力精度の別、スコープ名など） */
@@ -62,6 +69,16 @@ export interface LocalCoachFinding {
   title: string;
   summary: string;
   confidence: LocalCoachConfidence;
+  /**
+   * 効果の大きさを0〜1へ正規化した値。確からしさの重みと掛け合わせて
+   * 課題の順位を決める（ルールの記述順ではなく、実際に大きい課題を先頭にする）。
+   */
+  effect: number;
+  /**
+   * 並べ替えに使う総合スコア = effect × 確からしさの重み。
+   * 同値のときは種別の既定優先度、次に id の辞書順で安定させる。
+   */
+  severity: number;
   evidence: LocalCoachEvidence[];
   /**
    * この所見の主対象となる指標名。推奨メニューの成功判定はこの指標で書く。

@@ -108,7 +108,7 @@ describe("AI依頼文へのローカルコーチ分析の埋め込み", () => {
     expect(section).toContain("この分析は、アプリ内の決定ルールと統計計算による事前評価です。");
     expect(section).toContain("生成AIによる回答ではありません。");
     expect(section).toContain(`- 分析エンジン: ${ENGINE_VERSION}`);
-    expect(ENGINE_VERSION).toBe("local-coach-v1.0");
+    expect(ENGINE_VERSION).toBe("local-coach-v2.0");
   });
 
   it("外部AIへ独立検証を要求する指示が含まれる", () => {
@@ -271,6 +271,8 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
           id: "x",
           kind: "statistical_trend",
           priority: 1,
+          effect: 0.5,
+          severity: 0.35,
           title: "t",
           summary: "s",
           confidence: "medium",
@@ -290,6 +292,97 @@ describe("ローカルコーチMarkdownの整形（単体）", () => {
     expect(section.split("### 最優先の課題").length - 1).toBeLessThanOrEqual(1);
     expect(section.split("### 次に優先する課題").length - 1).toBeLessThanOrEqual(1);
     expect(section.split("### 次回の推奨メニュー").length - 1).toBeLessThanOrEqual(1);
+  });
+
+  it("相対差の根拠行は、指標名の直後に実測値を置く（%を指標値と読み違えない）", () => {
+    const section = buildLocalCoachMarkdown({
+      engineVersion: ENGINE_VERSION,
+      generatedFrom: {
+        completedThrows: 60,
+        plannedThrowCount: 60,
+        completionRatio: 1,
+        coordinateInputCount: 60,
+        approximateInputCount: 0,
+        comparisonSessionCount: 0,
+        comparisonSources: [],
+        scopes: [],
+      },
+      analyzable: true,
+      issueFindings: [
+        {
+          id: "x",
+          kind: "statistical_trend",
+          priority: 1,
+          effect: 0.5,
+          severity: 0.35,
+          title: "t",
+          summary: "s",
+          confidence: "medium",
+          evidence: [
+            {
+              metric: "後半の平均誤差距離",
+              current: 0.182,
+              baseline: 0.083,
+              difference: 1.2,
+              sampleSize: 40,
+              unit: "ratio",
+            },
+          ],
+          limitations: [],
+        },
+      ],
+      unavailableReasons: [],
+    });
+    expect(section).toContain(
+      "- 後半の平均誤差距離: 0.182 / 基準比 +120.0% (基準 0.083) / 分母40"
+    );
+  });
+
+  it("率の根拠には95%区間を併記し、有意性の主張はしない", () => {
+    const section = buildLocalCoachMarkdown({
+      engineVersion: ENGINE_VERSION,
+      generatedFrom: {
+        completedThrows: 60,
+        plannedThrowCount: 60,
+        completionRatio: 1,
+        coordinateInputCount: 60,
+        approximateInputCount: 0,
+        comparisonSessionCount: 0,
+        comparisonSources: [],
+        scopes: [],
+      },
+      analyzable: true,
+      issueFindings: [
+        {
+          id: "x",
+          kind: "statistical_trend",
+          priority: 1,
+          effect: 0.5,
+          severity: 0.35,
+          title: "t",
+          summary: "s",
+          confidence: "medium",
+          evidence: [
+            {
+              metric: "3投目の命中率",
+              current: 0.5,
+              sampleSize: 100,
+              unit: "rate",
+              interval: { low: 0.4038, high: 0.5962 },
+            },
+          ],
+          limitations: [],
+        },
+      ],
+      unavailableReasons: [],
+    });
+    expect(section).toContain(
+      "- 3投目の命中率: 50.0% / 分母100 / 95%区間 40.4%〜59.6%"
+    );
+    // 区間の読み方を1行で説明し、「有意」とは述べない
+    expect(section).toContain("95%区間」は推定のぶれ幅の目安です");
+    expect(section).not.toContain("有意差");
+    expect(section).not.toContain("統計的に有意");
   });
 
   it("推奨メニューに目的・実施方法・投擲数・意識すること・記録項目・成功判定が含まれる", () => {

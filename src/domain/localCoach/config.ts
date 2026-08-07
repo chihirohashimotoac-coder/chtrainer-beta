@@ -13,7 +13,7 @@
  * 分析結果はIndexedDBへ保存せず毎回再計算するため、この版数は
  * 「そのMarkdownを生成した時点のルール」を示す唯一の手掛かりになる。
  */
-export const ENGINE_VERSION = "local-coach-v1.0";
+export const ENGINE_VERSION = "local-coach-v2.0";
 
 /**
  * 傾向を語ってよい最小サンプル数。
@@ -112,6 +112,49 @@ export const DISPERSION_SD_THRESHOLD = 0.12;
  * 「どの方向へ外れたか」の頻度分布だけを根拠にする。
  */
 export const DIRECTION_BIAS_RATIO_THRESHOLD = 0.4;
+
+/**
+ * 区間推定に使う分位点（1.96 = 95%区間）。
+ * 出力では「95%区間」とだけ呼び、「有意」という語は使わない
+ * （多数の指標を同時に見ているため、単独の区間で有意性は主張できない）。
+ */
+export const CONFIDENCE_INTERVAL_Z = 1.96;
+
+/**
+ * ばらつきの比を「差がある」と扱う最小の対数比。
+ * log(1.3) ≒ 0.262。標準偏差が1.3倍を超えたときに検討対象とする。
+ */
+export const LOG_SD_RATIO_THRESHOLD = Math.log(1.3);
+
+/** ターゲット別の弱点・強みを扱う最小の命中判定対象数。 */
+export const MIN_TARGET_SAMPLE = MIN_ANALYZABLE_SAMPLE;
+
+/**
+ * 投擲テンポ（同一セット内の投擲間隔）の変化を扱う最小の相対差。
+ * 個々の間隔は中断・休憩で大きく振れるため、平均ではなく中央値で比較する。
+ */
+export const TEMPO_RELATIVE_DIFF_THRESHOLD = 0.25;
+
+/**
+ * 長期トレンドを「一貫した方向」と扱うための最小セッション数（今回を含む）。
+ * 4点が偶然に単調へ並ぶ確率は約1/12。これ未満では方向を語らない。
+ */
+export const MIN_TREND_SESSIONS = 4;
+
+/**
+ * 優先度付けに使う、効果量の正規化基準。
+ * 「これだけ差があれば大きい」とみなす値で、0〜1へ丸める分母になる。
+ */
+export const EFFECT_SCALE_RATE = 0.3;        // 命中率などの率の差(30ポイント)
+export const EFFECT_SCALE_RELATIVE = 1.0;    // 相対差(100%)
+export const EFFECT_SCALE_MARKS = 1.0;       // 1投あたりマーク数の差
+
+/** 確からしさごとの重み。効果量と掛け合わせて課題の順位を決める。 */
+export const CONFIDENCE_WEIGHTS = {
+  high: 1,
+  medium: 0.7,
+  low: 0.4,
+} as const;
 
 /** 出力件数の上限（Markdownを簡潔に保つため）。 */
 export const MAX_POSITIVE_FINDINGS = 1;

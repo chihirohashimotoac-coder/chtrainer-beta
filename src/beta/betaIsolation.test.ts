@@ -8,6 +8,7 @@ import {
   BETA_NOTICE,
 } from "../config/constants";
 import { VERSION_HISTORY } from "../config/versionHistory";
+import { ENGINE_VERSION } from "../domain/localCoach/config";
 
 /**
  * ベータ版と本番版の保存領域が分離されていることの回帰テスト。
@@ -111,8 +112,8 @@ describe("ベータ版の保存領域分離", () => {
 });
 
 describe("ベータ版のバージョンと識別表示", () => {
-  it("バージョンが 2.7.0-beta.1 で、package.json と一致する", () => {
-    expect(APP_VERSION).toBe("2.7.0-beta.1");
+  it("バージョンが 2.7.0-beta.2 で、package.json と一致する", () => {
+    expect(APP_VERSION).toBe("2.7.0-beta.2");
     expect(pkg.version).toBe(APP_VERSION);
     expect(pkg.name).toBe("darts-training-analyzer-beta");
   });
@@ -122,16 +123,34 @@ describe("ベータ版のバージョンと識別表示", () => {
   });
 
   it("バージョン履歴にベータ版の要点が記載されている", () => {
-    const summary = VERSION_HISTORY[0]?.summary ?? "";
+    // ベータ版の保存領域に関する事実は beta.1 で導入され、以降変わっていない。
+    // 最新エントリだけでなく履歴全体に記載があることを保証する。
+    const all = VERSION_HISTORY.map((e) => e.summary).join("\n");
     for (const phrase of [
       "ローカルコーチ事前分析",
       "ルールベース",
-      "生成AIや機械学習モデルは一切使用せず",
       "別の保存領域",
       "自動同期",
+      "darts-training-analyzer-beta",
     ]) {
-      expect(summary, phrase).toContain(phrase);
+      expect(all, phrase).toContain(phrase);
     }
+    // 生成AIを搭載していないことは、機能に触れるすべてのエントリで明示する
+    const localCoachEntries = VERSION_HISTORY.filter((e) =>
+      e.summary.includes("ローカルコーチ")
+    );
+    expect(localCoachEntries.length).toBeGreaterThan(0);
+    for (const entry of localCoachEntries) {
+      expect(entry.summary, entry.version).toMatch(
+        /生成AIや機械学習モデルは(一切使用せず|引き続き使用しない)/
+      );
+    }
+  });
+
+  it("最新エントリに分析エンジンの版数が記載されている", () => {
+    // 分析結果は保存せず毎回再計算するため、エンジン版数だけが
+    // 「どのルールで生成された分析か」を示す手掛かりになる。
+    expect(VERSION_HISTORY[0]?.summary).toContain(ENGINE_VERSION);
   });
 
   it("配布チャネルがベータで、表示名にβが付く", () => {
