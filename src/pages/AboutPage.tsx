@@ -50,20 +50,19 @@ export default function AboutPage() {
       <div className="card">
         <h2>{s.about.versionHistory}</h2>
         {VERSION_HISTORY.map((entry) => (
-          <div className="list-row" key={entry.version} style={{ alignItems: "flex-start" }}>
-            <span style={{ whiteSpace: "nowrap" }}>
+          /*
+           * 版数と本文を横並びにすると、版数側の white-space:nowrap が
+           * 幅を固定してしまい、スマホ幅では本文が数文字ずつの細長い列になる。
+           * 縦に積んで、本文へ行の全幅を使わせる。
+           */
+          <div className="version-entry" key={entry.version}>
+            <div className="version-entry-head">
               <strong>v{entry.version}</strong>
-              <span className="muted small"> ({entry.date})</span>
-            </span>
+              <span className="muted small">({entry.date})</span>
+            </div>
             <span
-              className="small"
-              style={{
-                textAlign: "left",
-                flex: 1,
-                minWidth: 0,
-                marginLeft: "0.8rem",
-                overflowWrap: "anywhere",
-              }}
+              className="small version-entry-summary"
+              style={{ minWidth: 0, overflowWrap: "anywhere" }}
             >
               {entry.summary}
             </span>

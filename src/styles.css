@@ -263,6 +263,31 @@ table,
   border-bottom: none;
 }
 
+/*
+ * バージョン履歴の1件。版数と本文を縦に積み、本文へ行の全幅を使わせる。
+ * 横並び(.list-row)では版数側の white-space:nowrap が約200pxを占有し、
+ * スマホ幅で本文が数文字ずつの細長い列になって読めなくなる。
+ */
+.version-entry {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--row-line);
+}
+.version-entry:last-child {
+  border-bottom: none;
+}
+.version-entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+.version-entry-summary {
+  display: block;
+  text-align: left;
+  line-height: 1.7;
+}
+
 .muted {
   color: var(--text-dim);
   font-size: 0.85rem;

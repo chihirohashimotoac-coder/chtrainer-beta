@@ -5,7 +5,7 @@
 > | | 本番版 | ベータ版(このリポジトリ) |
 > |---|---|---|
 > | URL | `https://chihirohashimotoac-coder.github.io/chtrainer/` | `https://chihirohashimotoac-coder.github.io/chtrainer-beta/` |
-> | バージョン | 2.6.0 | 2.7.0-beta.3 |
+> | バージョン | 2.6.0 | 2.7.0-beta.4 |
 > | IndexedDB | `darts-training-analyzer` | `darts-training-analyzer-beta` |
 > | SWキャッシュ | `dta-v<version>` | `dta-beta-v<version>` |
 > | localStorage(テーマ) | `chtrainer-theme` | `chtrainer-beta-theme` |
