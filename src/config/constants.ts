@@ -1,7 +1,7 @@
 /** アプリ全体の上限・閾値を一元管理する定数 */
 
 export const APP_NAME = "CH Darts Training Analyzer";
-export const APP_VERSION = "2.7.0-beta.3";
+export const APP_VERSION = "2.7.0-beta.4";
 
 /**
  * 配布チャネル。"beta" のとき、UIへβバッジと注意書きを表示する。
